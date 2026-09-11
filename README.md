@@ -9,21 +9,27 @@ plane, or three miles up a trail with no bars. Nothing in the app waits on a net
 <table>
 <tr>
 <td align="center"><img src="docs/screenshots/12-offline-cold-start.png" width="185"><br><sub>Cold start, no signal at all</sub></td>
-<td align="center"><img src="docs/screenshots/11-offline-search.png" width="185"><br><sub>4,031 episodes, searched offline</sub></td>
+<td align="center"><img src="docs/screenshots/11-offline-search.png" width="185"><br><sub>3,513 episodes, searched offline</sub></td>
 <td align="center"><img src="docs/screenshots/01-library.png" width="185"><br><sub>Grouped, with what's unplayed</sub></td>
-<td align="center"><img src="docs/screenshots/05-fastscroll.png" width="185"><br><sub>825 episodes in one drag</sub></td>
+<td align="center"><img src="docs/screenshots/05-fastscroll.png" width="185"><br><sub>826 episodes in one drag</sub></td>
 </tr>
 <tr>
+<td align="center"><img src="docs/screenshots/04-feed.png" width="185"><br><sub>Filter a show's back catalogue</sub></td>
 <td align="center"><img src="docs/screenshots/06-player.png" width="185"><br><sub>Speed, sleep timer, show notes</sub></td>
+<td align="center"><img src="docs/screenshots/16-chapters.png" width="185"><br><sub>Chapters, when a feed has them</sub></td>
 <td align="center"><img src="docs/screenshots/08-actions.png" width="185"><br><sub>On device, and where you got to</sub></td>
-<td align="center"><img src="docs/screenshots/09-history.png" width="185"><br><sub>What you finished, and when</sub></td>
-<td align="center"><img src="docs/screenshots/10-settings.png" width="185"><br><sub>Wi-Fi only, auto-delete, adopt</sub></td>
 </tr>
 <tr>
-<td align="center"><img src="docs/screenshots/13-discover.png" width="185"><br><sub>Find shows, no API key</sub></td>
-<td align="center"><img src="docs/screenshots/14-stats.png" width="185"><br><sub>Hours by show and month</sub></td>
+<td align="center"><img src="docs/screenshots/09-history.png" width="185"><br><sub>What you finished, and when</sub></td>
+<td align="center"><img src="docs/screenshots/14-stats.png" width="185"><br><sub>Hours by show and by month</sub></td>
+<td align="center"><img src="docs/screenshots/10-settings.png" width="185"><br><sub>Wi-Fi only, auto-delete, adopt</sub></td>
+<td align="center"><img src="docs/screenshots/13-discover.png" width="185"><br><sub>Directory search, no API key</sub></td>
+</tr>
+<tr>
 <td align="center"><img src="docs/screenshots/15-folder-import.png" width="185"><br><sub>A mounted share, adopted</sub></td>
 <td align="center"><img src="docs/screenshots/03-search.png" width="185"><br><sub>Show notes are searched too</sub></td>
+<td align="center"><img src="docs/screenshots/02-latest.png" width="185"><br><sub>Newest across every feed</sub></td>
+<td align="center"><img src="docs/screenshots/07-downloaded.png" width="185"><br><sub>Kept for the tunnel</sub></td>
 </tr>
 </table>
 
@@ -54,8 +60,8 @@ code. Mount it, import it, unmount it — the audio is on the phone now.
 | | |
 |---|---|
 | **Works with no network** | Library, episodes, show notes, search, playback of anything on the device. Cold start included. |
-| **Searches everything** | Full-text over every title and every show note, on the phone. 4,031 episodes return in under a second. |
-| **Handles a big collection** | A drag rail on any list over 40 rows, showing the month you're passing through. 825 episodes is one gesture. |
+| **Searches everything** | Full-text over every title and every show note, on the phone. 3,513 episodes return in under a second. |
+| **Handles a big collection** | A drag rail on any list over 40 rows, showing the month you're passing through. 826 episodes is one gesture. |
 | **Remembers where you were** | Resume position per episode, saved every five seconds. Finished episodes land in History with the date you finished them. |
 | **Fetches by itself** | Keep the newest *N* per feed, on unmetered networks only, resuming part-downloads rather than restarting them. |
 | **Cleans up after itself** | Finished downloads older than 7 / 30 / 90 days are deleted; the feed entry and your history stay. |
@@ -107,9 +113,29 @@ picker can reach — see [docs/setup.md → Adopting audio you already have](doc
 | `MainActivity.kt` | `Vm` — all state, the screen stack, every action |
 | `Screens.kt` | The UI |
 | `tools/sideload.py` | The same adoption from a desktop, over adb. Stdlib only |
+| `tools/demo_feeds.py` | Invented podcasts to screenshot and test against. Stdlib only |
 
 Eight Kotlin files. No dependency injection, no navigation library, no repository
 layer, no ORM.
+
+## A note on the screenshots
+
+Every screenshot above is of a library that does not exist. `tools/demo_feeds.py`
+serves ten invented shows over HTTP — the names, the cover art, the episode titles and
+every word of the show notes are made up, and the audio is silence.
+
+That is deliberate. Screenshots of a podcast client are the easiest way to end up
+redistributing somebody else's artwork and copy, and a repo is a distribution. Using
+a fixture also makes the screenshots reproducible:
+
+```bash
+python tools/demo_feeds.py            # then add the printed feeds in the app
+python tools/demo_feeds.py --print-feeds
+```
+
+Cleartext HTTP to the emulator's host alias is permitted **in debug builds only**
+(`app/src/debug/`). The release APK keeps Android's default and refuses cleartext
+entirely.
 
 ## A note on feed URLs
 

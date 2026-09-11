@@ -6,9 +6,9 @@ Given a folder of episodes on disk and the RSS feed they came from, this matches
 each file to an entry in the feed, pushes it to the phone over adb, and writes a
 manifest Deadzone reads to link the two. Settings -> "Adopt sideloaded files".
 
-    python tools/sideload.py --opml seed/feeds.local.opml --root X:/Podcasts
-    python tools/sideload.py --feed https://feeds.megaphone.fm/x --dir "X:/Podcasts/Show"
-    python tools/sideload.py --opml seed/feeds.local.opml --root X:/Podcasts --dry-run
+    python tools/sideload.py --opml seed/feeds.local.opml --root /media/podcasts
+    python tools/sideload.py --feed https://example.com/feed.xml --dir "/media/podcasts/Show"
+    python tools/sideload.py --opml seed/feeds.local.opml --root /media/podcasts --dry-run
 
 Nothing here needs the app to be a debug build and nothing needs root: files land
 in the app's own external directory, which adb can write to as the user.
@@ -39,13 +39,13 @@ for stream in (sys.stdout, sys.stderr):
     if hasattr(stream, "reconfigure"):
         stream.reconfigure(encoding="utf-8", errors="replace")
 
-# Local files are named by the ripper, not the publisher: "0007 - 7 Manfred (Part
-# 1).mp3" has to match "Ep 7: Manfred (Part 1)". Stripping the leading index and the
-# punctuation is what makes the two comparable at all.
+# Local files are named by the ripper, not the publisher: "0007 - 7 The Quarry (Part
+# 1).mp3" has to match "Ep 7: The Quarry (Part 1)". Stripping the leading index and
+# the punctuation is what makes the two comparable at all.
 LEADING_INDEX = re.compile(r"^\s*\d{1,5}\s*[-._]\s*(?:\d{1,5}\s*[-._:]?\s*)?")
-# The filler word goes; the number after it does NOT. "Manfred (Part 1)"
-# and "(Part 2)" are different episodes, and swallowing the digit makes
-# them one string, silently pairing the wrong audio with the wrong entry.
+# The filler word goes; the number after it does NOT. "(Part 1)" and "(Part 2)"
+# are different episodes, and swallowing the digit makes them one string,
+# silently pairing the wrong audio with the wrong entry.
 NOISE = re.compile(r"\b(ep(isode)?|pt|part|no)\b\.?", re.I)
 
 

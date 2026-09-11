@@ -459,8 +459,12 @@ fun ftsQuery(raw: String): String? {
     return tokens.joinToString(" ") + "*"
 }
 
+// COALESCE, not e.image: most feeds set artwork once on the channel and never per
+// episode, so reading e.image alone leaves every row and the player with a
+// placeholder. Doing it here fixes every screen at once, the car included.
 private const val SELECT =
-    "SELECT e.*, f.title feed_title FROM episode e JOIN feed f ON f.id = e.feed_id"
+    "SELECT e.*, COALESCE(e.image, f.image) image, f.title feed_title " +
+        "FROM episode e JOIN feed f ON f.id = e.feed_id"
 
 private fun safe(s: String) = s.replace(Regex("[^A-Za-z0-9 ._-]"), "").trim().ifEmpty { "podcast" }
 

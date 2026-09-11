@@ -4,9 +4,9 @@ package net.sp00nz.deadzone
  * Working out which episode a file on disk actually is.
  *
  * Local audio is named by whatever ripped it, not by the publisher:
- * "0007 - 7 Manfred (Part 1).mp3" has to find "Ep 7: Manfred (Part 1)". This is the
- * same job tools/sideload.py does on a desktop, done on the phone so a folder import
- * needs nothing but the folder.
+ * "0007 - 7 The Quarry (Part 1).mp3" has to find "Ep 7: The Quarry (Part 1)". The
+ * same job tools/sideload.py does on a desktop, done on the phone so that a folder
+ * import needs nothing but the folder.
  *
  * Pure — no Android imports, so it runs under plain JUnit.
  */
@@ -17,16 +17,16 @@ class Candidate<T>(val title: String, val value: T)
 // "0007 - 7 Some Title" -> "Some Title". The index the ripper prepended is never in
 // the feed, and left in place it drags every score down by the same amount.
 private val LEADING_INDEX = Regex("""^\s*\d{1,5}\s*[-._]\s*(?:\d{1,5}\s*[-._:]?\s*)?""")
-// The filler word goes; the number after it does NOT. "Manfred (Part 1)" and
-// "(Part 2)" are different episodes, and swallowing the digit makes them the same
-// string — a silent mis-pairing, which is the worst thing this matcher can do.
+// The filler word goes; the number after it does NOT. "(Part 1)" and "(Part 2)" are
+// different episodes, and swallowing the digit makes them the same string — a silent
+// mis-pairing, which is the worst thing this matcher can do.
 private val NOISE = Regex("""\b(ep|episode|pt|part|no)\b\.?""", RegexOption.IGNORE_CASE)
 
 fun normalise(s: String): String {
     var t = LEADING_INDEX.replace(s, "")
     t = NOISE.replace(t, " ")
     return t.lowercase()
-        // Strip accents so "Beyoncé" and "Beyonce" are the same word.
+        // Strip accents so "Café" and "Cafe" are the same word.
         .map { if (it in ACCENTS) ACCENT_PLAIN[ACCENTS.indexOf(it)] else it }
         .joinToString("")
         .replace(Regex("[^a-z0-9 ]+"), " ")

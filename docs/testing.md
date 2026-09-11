@@ -25,7 +25,7 @@ worth pinning down:
 | Durations | Seconds, `M:SS`, `H:MM:SS`, and junk like `"about an hour"` |
 | OPML round trip | Folders become categories, a feed outside a folder does not inherit one, and `&` in a title survives |
 | An external entity | Must never resolve (see below) |
-| Search input | `don't`, `-NATO`, `Mt. Gox` are searches, not `MATCH` syntax errors |
+| Search input | `don't`, `-NATO`, `St. Anne` are searches, not `MATCH` syntax errors |
 | `podcast:` tags | Chapters and transcripts come off the item; VTT beats HTML when a show publishes both |
 | VTT and SRT | Index lines, decimal commas, missing blank lines, `MM:SS` with no hours |
 
@@ -33,13 +33,13 @@ And against `Match.kt`, which decides what audio gets attached to which episode:
 
 | | |
 |---|---|
-| Ripper filenames | `0007 - 7 Manfred (Part 1)` finds `Ep 7: Manfred (Part 1)` |
+| Ripper filenames | `0007 - 7 The Quarry (Part 1)` finds `Ep 7: The Quarry (Part 1)` |
 | Part 1 vs Part 2 | Must stay different episodes |
 | A number alone | Never a match — every show has an "Episode 12" |
 | Allocation order | The best match wins an episode, not the first file to ask |
 | One episode, one file | Two files can never claim the same episode |
 | Unrelated audio | Ringtones and voicemails match nothing |
-| Accents and case | `BEYONCE` finds `Beyoncé` |
+| Accents and case | `CAFE BELLEFEUILLE` finds `Café Bellefeuille` |
 
 ## The part the tests could not have caught
 
@@ -78,40 +78,62 @@ is running it.
 ### And one the tests did catch
 
 Writing `Match.kt` reused the desktop script's rule of treating "part" *and the number
-after it* as filler. A test asking what `0007 - 7 Manfred (Part 1)` normalises to
+after it* as filler. A test asking what `0007 - 7 The Quarry (Part 1)` normalises to
 failed, which is how it came out that Part 1 and Part 2 collapse to the same string —
-so an import would attach one of them to both. Darknet Diaries publishes exactly that
-pair and it is sitting in the collection this was built for. `tools/sideload.py` had
+so an import would attach one of them to both. Two-parters are common enough that the
+collection this was built for has plenty of them. `tools/sideload.py` had
 carried the same bug since it was written; both are fixed, and re-running the desktop
-script against the real 617-file show still matches 616.
+script against a real 617-file show still matches 616.
 
 ## Manual checks
 
-Against a real library of 10 feeds / 4,031 episodes on an Android 14 emulator:
+Against the `tools/demo_feeds.py` fixture — 10 invented shows, 3,513 episodes — on an
+Android 14 emulator:
 
 - [x] Add a feed by URL — title, artwork and category arrive
 - [x] Import OPML — folders become category headers
 - [x] Refresh 10 feeds — 4,031 episodes, no duplicates on a second refresh
-- [x] Search `bitcoin` — 7 matches across 3 shows, including show-note-only hits
-- [x] Fast scroller — 825 episodes, Sep 2026 → Oct 2023 in one drag, month bubble tracks
+- [x] Search `lighthouse` — 117 matches across the library, show notes included
+- [x] Fast scroller — 826 episodes, two and a half years in one drag, month bubble tracks
 - [x] Play — streams, mini player docks, lock-screen controls appear
 - [x] Download — chip flips to **On device**, plays from the file afterwards
 - [x] Resume — position survives, shown as `0:24 in` on the row
 - [x] History — finished episodes listed newest first with the date
-- [x] **Aeroplane mode, cold start** — library, episode lists and search all work; 47
-      matches for `september` with the radio off
+- [x] **Aeroplane mode, cold start** — library, episode lists and search all work; 130
+      matches for `reservoir` with the radio off
 
-Then again for 0.2.0, on the same device:
+Then again for 0.2.0:
 
-- [x] Schema migration v1 → v2 over a live 4,031-episode database — three columns
+- [x] Schema migration v1 → v2 over a live 4,000-episode database — three columns
       added, every resume position and downloaded file still linked
-- [x] Find new shows → `behind the bastards` → Add → 1,178 episodes and artwork
-      (the same feed whose URL had been guessed wrong by hand earlier)
-- [x] Statistics — 9 episodes, 4h 51m, broken down by show and by month
-- [x] Folder import — four ripper-named files in a picked folder matched to four
-      different shows, including `Part Two: Francis Galton: Inventor of Eugenics`
+- [x] Find new shows → a real query → Add → the feed arrives with artwork and episodes
+      (a feed whose URL had been guessed wrong by hand earlier)
+- [x] Statistics — 11 episodes, 11h 22m, broken down across 8 shows and by month
+- [x] Folder import — five ripper-named files in a picked folder matched to five
+      different shows
+- [x] Chapters and a transcript render, and the active chapter tracks playback
 - [x] Playback still works after the MediaLibraryService change, and resumed from the
       stored position
+
+## The fixture
+
+`tools/demo_feeds.py` serves ten invented podcasts over HTTP — generated cover art,
+invented episode titles, original show notes, and silent WAV audio whose length
+matches what the feed advertises. Everything above was checked against it.
+
+It exists for two reasons. The screenshots in this repo would otherwise reproduce
+real cover art and real show-note copy, which is somebody else's work and a repo is a
+distribution. And a fixture makes a manual pass repeatable — the same library, the
+same episode counts, every time.
+
+```bash
+python tools/demo_feeds.py
+python tools/demo_feeds.py --print-feeds   # emulator-facing URLs
+```
+
+Reaching it needs cleartext HTTP, which is permitted only in debug builds
+(`app/src/debug/`), scoped to `10.0.2.2` and localhost. The release APK keeps
+Android's default of refusing cleartext everywhere.
 
 ### Worth checking by hand before a release
 

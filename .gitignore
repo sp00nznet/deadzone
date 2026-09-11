@@ -15,3 +15,7 @@ seed/
 *.opml
 feeds.local.*
 sideload.tsv
+
+# python
+__pycache__/
+*.pyc

@@ -16,20 +16,20 @@ class FeedTest {
         <?xml version="1.0" encoding="UTF-8"?>
         <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
           <channel>
-            <title>Darknet Diaries</title>
+            <title>Packet Loss</title>
             <itunes:image href="https://example.com/art.jpg"/>
             <itunes:category text="Technology"/>
             <item>
-              <title>Ep 1: The Phreaky World of PBX Hacking</title>
-              <guid isPermaLink="false">dd-0001</guid>
+              <title>Ep 1: The Overdue Bridge</title>
+              <guid isPermaLink="false">pl-0001</guid>
               <pubDate>Tue, 5 Sep 2017 04:00:00 GMT</pubDate>
               <itunes:duration>28:11</itunes:duration>
-              <description>&lt;p&gt;Phone &amp;amp; phreaks.&lt;/p&gt;</description>
+              <description>&lt;p&gt;Bridges &amp;amp; budgets.&lt;/p&gt;</description>
               <enclosure url="https://cdn.example.com/1.mp3" length="13643505" type="audio/mpeg"/>
             </item>
             <item>
               <title>A post with no audio</title>
-              <guid>dd-note</guid>
+              <guid>pl-note</guid>
               <pubDate>Wed, 06 Sep 2017 04:00:00 GMT</pubDate>
             </item>
           </channel>
@@ -39,19 +39,19 @@ class FeedTest {
     @Test
     fun `reads a normal rss feed`() {
         val f = parseFeed(rss)
-        assertEquals("Darknet Diaries", f.title)
+        assertEquals("Packet Loss", f.title)
         assertEquals("https://example.com/art.jpg", f.image)
         assertEquals("Technology", f.category)
 
         // The second <item> has no enclosure, so it is not an episode.
         assertEquals(1, f.items.size)
         val e = f.items[0]
-        assertEquals("dd-0001", e.guid)
+        assertEquals("pl-0001", e.guid)
         assertEquals("https://cdn.example.com/1.mp3", e.audioUrl)
         assertEquals(13643505L, e.size)
         assertEquals(28 * 60 + 11, e.duration)
         assertTrue(e.published > 0, "pubDate must parse or the feed sorts into 1970")
-        assertTrue(e.description.contains("Phone"))
+        assertTrue(e.description.contains("Bridges"))
     }
 
     @Test
@@ -148,10 +148,10 @@ class FeedTest {
         val xml = """
             <opml version="2.0"><body>
               <outline text="Politics">
-                <outline type="rss" text="TrueAnon" xmlUrl="https://a/ta.xml"/>
-                <outline type="rss" text="Chapo" xmlUrl="https://a/cth.xml"/>
+                <outline type="rss" text="Night Bus" xmlUrl="https://a/nb.xml"/>
+                <outline type="rss" text="Small Claims" xmlUrl="https://a/sc.xml"/>
               </outline>
-              <outline type="rss" text="Darknet Diaries" xmlUrl="https://a/dd.xml"/>
+              <outline type="rss" text="Packet Loss" xmlUrl="https://a/pl.xml"/>
             </body></opml>
         """.trimIndent()
 
@@ -161,7 +161,7 @@ class FeedTest {
         assertEquals("Politics", feeds[1].category)
         // The third sits outside the folder — the folder must have been popped.
         assertNull(feeds[2].category)
-        assertEquals("https://a/dd.xml", feeds[2].url)
+        assertEquals("https://a/pl.xml", feeds[2].url)
 
         val again = parseOpml(writeOpml(feeds))
         assertEquals(feeds.toSet(), again.toSet())
@@ -169,7 +169,7 @@ class FeedTest {
 
     @Test
     fun `opml with an ampersand in a title survives the round trip`() {
-        val feeds = listOf(OpmlEntry("Wait Wait & Co <live>", "https://a/w.xml?x=1&y=2", null))
+        val feeds = listOf(OpmlEntry("Ledger & Lines <live>", "https://a/w.xml?x=1&y=2", null))
         assertEquals(feeds, parseOpml(writeOpml(feeds)))
     }
 
@@ -182,7 +182,7 @@ class FeedTest {
         assertEquals("don t*", ftsQuery("don't"))
         // Case is left alone — the tokenizer folds it at match time.
         assertEquals("NATO*", ftsQuery("  -NATO  "))
-        assertEquals("Mt Gox*", ftsQuery("Mt. Gox"))
+        assertEquals("St Anne*", ftsQuery("St. Anne"))
         // Nothing survives that MATCH could read as an operator.
         assertTrue(ftsQuery("a\"b -c* (d)")!!.none { it in "\"()-" })
         assertNull(ftsQuery("   "))

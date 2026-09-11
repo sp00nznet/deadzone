@@ -20,21 +20,21 @@ class MatchTest {
         // Real shapes: a leading index the feed never had, "Episode" spelled out,
         // punctuation that does not survive a filesystem.
         val feed = episodes(
-            "Ep 7: Manfred (Part 1)",
-            "Episode 559: Deadpool",
-            "9: The Rise and Fall of Mt. Gox",
+            "Ep 7: The Quarry (Part 1)",
+            "Episode 559: Closing Time at the Depot",
+            "9: The Rise and Fall of the Aqueduct",
         )
         val m = matchAll(
             listOf(
-                "0007 - 7 Manfred (Part 1)",
-                "0617 - Episode 559 Deadpool",
-                "0009 - 9 The Rise and Fall of Mt Gox",
+                "0007 - 7 The Quarry (Part 1)",
+                "0617 - Episode 559 Closing Time at the Depot",
+                "0009 - 9 The Rise and Fall of the Aqueduct",
             ),
             feed,
         )
-        assertEquals(0L, m["0007 - 7 Manfred (Part 1)"])
-        assertEquals(1L, m["0617 - Episode 559 Deadpool"])
-        assertEquals(2L, m["0009 - 9 The Rise and Fall of Mt Gox"])
+        assertEquals(0L, m["0007 - 7 The Quarry (Part 1)"])
+        assertEquals(1L, m["0617 - Episode 559 Closing Time at the Depot"])
+        assertEquals(2L, m["0009 - 9 The Rise and Fall of the Aqueduct"])
     }
 
     @Test
@@ -57,7 +57,7 @@ class MatchTest {
 
     @Test
     fun `unrelated audio is left alone`() {
-        val feed = episodes("The Rise and Fall of Mt. Gox", "Carna Botnet")
+        val feed = episodes("The Rise and Fall of the Aqueduct", "The Quiet Substation")
         assertTrue(matchAll(listOf("track01", "Ringtone", "holiday voicemail"), feed).isEmpty())
     }
 
@@ -72,16 +72,18 @@ class MatchTest {
 
     @Test
     fun `part one and part two stay different episodes`() {
-        val feed = episodes("Manfred (Part 1)", "Manfred (Part 2)")
-        val m = matchAll(listOf("0007 - 7 Manfred (Part 1)", "0008 - 8 Manfred (Part 2)"), feed)
-        assertEquals(0L, m["0007 - 7 Manfred (Part 1)"])
-        assertEquals(1L, m["0008 - 8 Manfred (Part 2)"])
+        val feed = episodes("The Quarry (Part 1)", "The Quarry (Part 2)")
+        val m = matchAll(
+            listOf("0007 - 7 The Quarry (Part 1)", "0008 - 8 The Quarry (Part 2)"), feed
+        )
+        assertEquals(0L, m["0007 - 7 The Quarry (Part 1)"])
+        assertEquals(1L, m["0008 - 8 The Quarry (Part 2)"])
     }
 
     @Test
     fun `accents and case do not matter`() {
-        val feed = episodes("Beyoncé and the Album Rollout")
-        val m = matchAll(listOf("0042 - BEYONCE AND THE ALBUM ROLLOUT"), feed)
+        val feed = episodes("Café Bellefeuille and the Long Lease")
+        val m = matchAll(listOf("0042 - CAFE BELLEFEUILLE AND THE LONG LEASE"), feed)
         assertEquals(0L, m.values.firstOrNull())
     }
 
@@ -95,9 +97,9 @@ class MatchTest {
     fun `normalise strips the index, the filler and the punctuation`() {
         // Rippers write the index twice ("0007 - 7 ..."); both go, but the "1" of
         // "Part 1" stays, because that one is part of the episode's identity.
-        assertEquals("manfred 1", normalise("0007 - 7 Manfred (Part 1)"))
-        assertEquals("559 deadpool", normalise("Episode 559: Deadpool"))
-        assertEquals("9 the rise and fall of mt gox", normalise("9: The Rise and Fall of Mt. Gox"))
+        assertEquals("the quarry 1", normalise("0007 - 7 The Quarry (Part 1)"))
+        assertEquals("559 closing time at the depot", normalise("Episode 559: Closing Time at the Depot"))
+        assertEquals("9 the rise and fall of the aqueduct", normalise("9: The Rise and Fall of the Aqueduct"))
     }
 
     // ---- transcripts ----

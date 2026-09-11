@@ -111,15 +111,15 @@ the same matching on the desktop and pushes over adb.
 
 ```bash
 # See what would match, touch nothing
-python tools/sideload.py --feed https://feeds.megaphone.fm/darknetdiaries \
-                         --dir "X:/Podcasts/DarknetDiaries" --dry-run
+python tools/sideload.py --feed https://example.com/feed.xml \
+                         --dir "/media/podcasts/Some Show" --dry-run
 
 # Do it
-python tools/sideload.py --feed https://feeds.megaphone.fm/darknetdiaries \
-                         --dir "X:/Podcasts/DarknetDiaries"
+python tools/sideload.py --feed https://example.com/feed.xml \
+                         --dir "/media/podcasts/Some Show"
 
 # Or a whole library at once, matching folders to feeds by name
-python tools/sideload.py --opml seed/feeds.local.opml --root X:/Podcasts
+python tools/sideload.py --opml seed/feeds.local.opml --root /media/podcasts
 ```
 
 Then, in the app: **Settings → Adopt sideloaded files**.
@@ -131,7 +131,7 @@ directory, which adb can write as the user.
 ### How the matching works
 
 Local files are named by whatever ripped them, not by the publisher:
-`0007 - 7 Manfred (Part 1).mp3` has to find `Ep 7: Manfred (Part 1)`. Both routes
+`0007 - 7 The Quarry (Part 1).mp3` has to find `Ep 7: The Quarry (Part 1)`. Both routes
 strip the leading index, drop filler words like "episode", flatten punctuation and
 accents, and score what is left.
 
@@ -160,6 +160,23 @@ an episode downloaded that then fails to play.
 
 Remote filenames are a sha1 of the episode guid, so re-running the script overwrites
 the same files instead of pushing a second copy of everything.
+
+## Running against a fixture
+
+`tools/demo_feeds.py` serves ten invented podcasts — generated artwork, invented
+episode titles, original show notes, silent audio. Every screenshot in this repo is
+taken against it, so that none of them reproduce anyone else's cover art or copy.
+
+```bash
+python tools/demo_feeds.py                 # serves on :8765
+python tools/demo_feeds.py --print-feeds   # the URLs to paste into the app
+```
+
+From an emulator the host is `10.0.2.2`. Reaching it over plain HTTP is permitted
+**only in debug builds** — `app/src/debug/` carries a network security config scoped
+to `10.0.2.2` and localhost, and the release APK keeps Android's default of refusing
+cleartext everywhere. If you ever need a real `http://` feed to work in a release
+build, that is a deliberate decision to make then, not a default to inherit.
 
 ## Finding shows
 

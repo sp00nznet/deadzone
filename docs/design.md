@@ -17,6 +17,10 @@ MainActivity.kt   Vm — all state, every action.
 Screens.kt        The UI.
 ```
 
+Plus two stdlib-only Python tools: `sideload.py` (adopt a collection from a
+desktop over adb) and `demo_feeds.py` (invented podcasts to screenshot and test
+against, so nothing here redistributes anyone else's artwork or copy).
+
 There is no dependency injection, no navigation library, no repository layer, no
 ORM, and no `domain/` package. The screen you are on is a field on `Vm`. Back is a
 `when` block.
@@ -132,7 +136,7 @@ reads. Useful when the collection is on a machine the phone cannot mount.
 ### The matching
 
 Local audio is named by whatever ripped it, not by the publisher:
-`0007 - 7 Manfred (Part 1).mp3` has to find `Ep 7: Manfred (Part 1)`. `Match.kt`
+`0007 - 7 The Quarry (Part 1).mp3` has to find `Ep 7: The Quarry (Part 1)`. `Match.kt`
 strips the leading index (rippers often write it twice), drops filler words, flattens
 case and accents, and scores token overlap.
 
