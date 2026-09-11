@@ -124,6 +124,12 @@ class Vm(app: Application) : AndroidViewModel(app) {
         episodes = withContext(Dispatchers.IO) { store.episodes(fid, filter) }
         history = withContext(Dispatchers.IO) { store.history() }
         openFeed?.let { cur -> openFeed = f.firstOrNull { it.id == cur.id } ?: cur }
+        // The player sheet renders from this value rather than re-reading, so
+        // without refreshing it a finished download leaves the sheet still
+        // offering "Download" while the row behind it already says "on device".
+        nowPlaying?.let { cur ->
+            nowPlaying = withContext(Dispatchers.IO) { store.episode(cur.id) } ?: cur
+        }
     }
 
     // ---- feeds ----

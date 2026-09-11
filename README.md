@@ -17,7 +17,7 @@ plane, or three miles up a trail with no bars. Nothing in the app waits on a net
 <td align="center"><img src="docs/screenshots/04-feed.png" width="185"><br><sub>Filter a show's back catalogue</sub></td>
 <td align="center"><img src="docs/screenshots/06-player.png" width="185"><br><sub>Speed, sleep timer, show notes</sub></td>
 <td align="center"><img src="docs/screenshots/16-chapters.png" width="185"><br><sub>Chapters, when a feed has them</sub></td>
-<td align="center"><img src="docs/screenshots/08-actions.png" width="185"><br><sub>On device, and where you got to</sub></td>
+<td align="center"><img src="docs/screenshots/08-actions.png" width="185"><br><sub>Play, queue, download, mark played</sub></td>
 </tr>
 <tr>
 <td align="center"><img src="docs/screenshots/09-history.png" width="185"><br><sub>What you finished, and when</sub></td>
@@ -29,7 +29,7 @@ plane, or three miles up a trail with no bars. Nothing in the app waits on a net
 <td align="center"><img src="docs/screenshots/15-folder-import.png" width="185"><br><sub>A mounted share, adopted</sub></td>
 <td align="center"><img src="docs/screenshots/03-search.png" width="185"><br><sub>Show notes are searched too</sub></td>
 <td align="center"><img src="docs/screenshots/02-latest.png" width="185"><br><sub>Newest across every feed</sub></td>
-<td align="center"><img src="docs/screenshots/07-downloaded.png" width="185"><br><sub>Kept for the tunnel</sub></td>
+<td align="center"><img src="docs/screenshots/07-downloaded.png" width="185"><br><sub>Downloaded, and playing from disk</sub></td>
 </tr>
 </table>
 
@@ -144,6 +144,24 @@ Nothing in this repo contains a feed URL, and nothing should. A paid feed's URL
 holding it can read your paid subscription as you. `seed/` and `*.opml` are in
 `.gitignore` for that reason. Keep your list local, or export it to somewhere private.
 
+## Built on
+
+Deadzone is a thin thing on top of other people's work. All of the below are
+Apache-2.0, and all of it ships inside the APK:
+
+| | |
+|---|---|
+| [AndroidX & Jetpack Compose](https://developer.android.com/jetpack) | UI, lifecycle, WorkManager |
+| [Media3 / ExoPlayer](https://github.com/androidx/media) | Playback, the media session, Android Auto |
+| [OkHttp](https://square.github.io/okhttp/) | Every HTTP request |
+| [Coil](https://coil-kt.github.io/coil/) | Artwork loading and caching |
+| [Kotlin](https://kotlinlang.org) & [Gradle](https://gradle.org) | Language and build |
+
+Episode discovery uses the public [iTunes Search API](https://performance-partners.apple.com/search-api).
+Feeds are read per the [RSS 2.0](https://www.rssboard.org/rss-specification) and
+[Podcasting 2.0](https://podcastindex.org/namespace/1.0) specifications.
+
 ## Licence
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). The Apache-2.0 dependencies above remain under their
+own licence.

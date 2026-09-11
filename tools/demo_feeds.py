@@ -233,12 +233,12 @@ class Handler(BaseHTTPRequestHandler):
             elif path.startswith("/art/"):
                 slug = path[len("/art/"):].removesuffix(".png")
                 s = next(x for x in SHOWS if x[0] == slug)
-                self.send(cover(s[5], slug), "image/png")
+                self.send(cover(s[5], slug), "image/png", cacheable=True)
             elif path.startswith("/audio/"):
                 # .../<slug>/<n>/<seconds>.wav — the length is in the URL so the file
                 # really is as long as the feed says it is.
                 secs = int(path.removesuffix(".wav").rsplit("/", 1)[1])
-                self.send(silence(min(secs, 7200)), "audio/wav")
+                self.send(silence(min(secs, 7200)), "audio/wav", cacheable=True)
             elif path.startswith("/chapters/"):
                 slug, n = path[len("/chapters/"):].removesuffix(".json").split("/")
                 self.send(chapters(slug, int(n)).encode(), "application/json")
@@ -253,12 +253,17 @@ class Handler(BaseHTTPRequestHandler):
         except StopIteration:
             self.send_error(404)
 
-    def send(self, body, content_type):
+    def send(self, body, content_type, cacheable=False):
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        # Every request regenerates, so a cached 304 would hide edits to this file.
-        self.send_header("Cache-Control", "no-store")
+        # Artwork and audio must be cacheable or the client cannot hold them for
+        # offline use — sending no-store on the covers makes an offline library
+        # look broken when it is the fixture forbidding the cache, not the app.
+        # Feeds stay uncacheable so edits to this file show up on the next refresh.
+        self.send_header(
+            "Cache-Control", "public, max-age=86400" if cacheable else "no-store"
+        )
         self.end_headers()
         self.wfile.write(body)
 
