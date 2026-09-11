@@ -45,6 +45,9 @@ data class Episode(
     val position: Long,     // resume point, millis
     val playedAt: Long,     // 0 = never finished
     val image: String?,
+    val chaptersUrl: String? = null,
+    val transcriptUrl: String? = null,
+    val transcriptType: String? = null,
 ) {
     val downloaded get() = file != null
 
@@ -58,7 +61,7 @@ data class Episode(
 
 enum class Filter { ALL, UNPLAYED, DOWNLOADED, IN_PROGRESS }
 
-class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", null, 1) {
+class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", null, 2) {
 
     override fun onConfigure(db: SQLiteDatabase) {
         db.setForeignKeyConstraintsEnabled(true)
@@ -89,6 +92,9 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
                  duration INTEGER NOT NULL DEFAULT 0,
                  size INTEGER NOT NULL DEFAULT 0,
                  image TEXT,
+                 chapters_url TEXT,
+                 transcript_url TEXT,
+                 transcript_type TEXT,
                  file TEXT,
                  position INTEGER NOT NULL DEFAULT 0,
                  played_at INTEGER NOT NULL DEFAULT 0,
@@ -132,7 +138,16 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
         )
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, old: Int, new: Int) {
+        // Additive only. Dropping the database would take every resume position and
+        // every downloaded file's link with it, which is not a thing to do for a
+        // couple of new columns.
+        if (old < 2) {
+            for (col in listOf("chapters_url", "transcript_url", "transcript_type")) {
+                db.execSQL("ALTER TABLE episode ADD COLUMN $col TEXT")
+            }
+        }
+    }
 
     // ---- feeds ----
 
@@ -194,16 +209,21 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
                 // played_at are ours, and a re-publish must never reset them.
                 db.execSQL(
                     """INSERT INTO episode
-                         (feed_id, guid, title, description, audio_url, published, duration, size, image)
-                       VALUES (?,?,?,?,?,?,?,?,?)
+                         (feed_id, guid, title, description, audio_url, published,
+                          duration, size, image, chapters_url, transcript_url, transcript_type)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(feed_id, guid) DO UPDATE SET
                          title = excluded.title, description = excluded.description,
                          audio_url = excluded.audio_url, published = excluded.published,
                          duration = excluded.duration, size = excluded.size,
-                         image = COALESCE(excluded.image, episode.image)""",
+                         image = COALESCE(excluded.image, episode.image),
+                         chapters_url = excluded.chapters_url,
+                         transcript_url = excluded.transcript_url,
+                         transcript_type = excluded.transcript_type""",
                     arrayOf<Any?>(
                         feedId, item.guid, item.title, item.description, item.audioUrl,
                         item.published, item.duration, item.size, item.image,
+                        item.chaptersUrl, item.transcriptUrl, item.transcriptType,
                     )
                 )
             }
@@ -365,6 +385,56 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
         .rawQuery("SELECT COALESCE(SUM(size), 0) FROM episode WHERE file IS NOT NULL", null)
         .use { if (it.moveToFirst()) it.getLong(0) else 0L }
 
+    // ---- folder import ----
+
+    /**
+     * Every episode we do not already have audio for, as (id, title).
+     *
+     * ponytail: matched against the whole library rather than per-feed. Working out
+     * which feed a folder belongs to is a second guess that can also be wrong, and
+     * the matcher's inverted index does not care about the extra rows. Episode titles
+     * generic enough to collide across shows ("Episode 12") normalise to nothing and
+     * are skipped rather than mismatched.
+     */
+    fun unmatchedEpisodes(): List<Candidate<Long>> = readableDatabase.rawQuery(
+        "SELECT id, title FROM episode WHERE file IS NULL", null
+    ).use { c ->
+        val out = ArrayList<Candidate<Long>>(c.count)
+        while (c.moveToNext()) out += Candidate(c.getString(1), c.getLong(0))
+        out
+    }
+
+    // ---- statistics ----
+
+    data class ShowTime(val title: String, val finished: Int, val seconds: Long)
+    data class MonthTime(val month: String, val finished: Int, val seconds: Long)
+
+    /**
+     * played_at has been a real timestamp on every finished episode since v1, so this
+     * is a query rather than a feature — nothing had to be recorded to enable it.
+     */
+    fun timeByShow(): List<ShowTime> = readableDatabase.rawQuery(
+        """SELECT f.title, COUNT(*) n, COALESCE(SUM(e.duration), 0) secs
+             FROM episode e JOIN feed f ON f.id = e.feed_id
+            WHERE e.played_at > 0
+            GROUP BY f.id ORDER BY secs DESC""", null
+    ).use { c ->
+        val out = ArrayList<ShowTime>()
+        while (c.moveToNext()) out += ShowTime(c.getString(0), c.getInt(1), c.getLong(2))
+        out
+    }
+
+    fun timeByMonth(limit: Int = 12): List<MonthTime> = readableDatabase.rawQuery(
+        """SELECT strftime('%Y-%m', played_at / 1000, 'unixepoch') m,
+                  COUNT(*) n, COALESCE(SUM(duration), 0) secs
+             FROM episode WHERE played_at > 0
+            GROUP BY m ORDER BY m DESC LIMIT ?""", arrayOf("$limit")
+    ).use { c ->
+        val out = ArrayList<MonthTime>()
+        while (c.moveToNext()) out += MonthTime(c.getString(0), c.getInt(1), c.getLong(2))
+        out
+    }
+
     private fun update(table: String, id: Long, vararg cols: Pair<String, Any?>) {
         writableDatabase.update(table, ContentValues().apply {
             for ((k, v) in cols) when (v) {
@@ -420,5 +490,6 @@ private fun episodeOf(c: Cursor) = Episode(
     audioUrl = c.getString(c.getColumnIndexOrThrow("audio_url")),
     published = c.long("published"), duration = c.int("duration"), size = c.long("size"),
     file = c.str("file"), position = c.long("position"), playedAt = c.long("played_at"),
-    image = c.str("image"),
+    image = c.str("image"), chaptersUrl = c.str("chapters_url"),
+    transcriptUrl = c.str("transcript_url"), transcriptType = c.str("transcript_type"),
 )

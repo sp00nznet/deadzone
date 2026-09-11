@@ -57,6 +57,18 @@ class Vm(app: Application) : AndroidViewModel(app) {
     var status by mutableStateOf<String?>(null)
     var downloading by mutableStateOf<Map<Long, Float>>(emptyMap())
 
+    // Directory search, folder import, statistics, chapters, transcript.
+    var findingShows by mutableStateOf(false)
+    var discovered by mutableStateOf<List<Found>>(emptyList())
+    var searchingDirectory by mutableStateOf(false)
+    var importing by mutableStateOf<ImportProgress?>(null)
+    var showStats by mutableStateOf(false)
+    var byShow by mutableStateOf<List<Store.ShowTime>>(emptyList())
+    var byMonth by mutableStateOf<List<Store.MonthTime>>(emptyList())
+    var chapters by mutableStateOf<List<Chapter>>(emptyList())
+    var cues by mutableStateOf<List<Cue>>(emptyList())
+    var showTranscript by mutableStateOf(false)
+
     var nowPlaying by mutableStateOf<Episode?>(null)
     var playing by mutableStateOf(false)
     var position by mutableStateOf(0L)
@@ -200,6 +212,58 @@ class Vm(app: Application) : AndroidViewModel(app) {
         else withContext(Dispatchers.IO) { store.search(q) }
     }
 
+    /** The iTunes directory, for feeds you do not already have the URL for. */
+    fun discover(term: String) = viewModelScope.launch {
+        query = term
+        if (term.isBlank()) { discovered = emptyList(); return@launch }
+        searchingDirectory = true
+        discovered = runCatching { searchPodcasts(term) }.getOrDefault(emptyList())
+        searchingDirectory = false
+        if (discovered.isEmpty()) status = "Nothing in the directory for that"
+    }
+
+    fun subscribe(found: Found) = viewModelScope.launch {
+        withContext(Dispatchers.IO) { store.addFeed(found.feedUrl, found.title) }
+        status = "Added ${found.title}"
+        reload()
+        sync()
+    }
+
+    // ---- folder import ----
+
+    /**
+     * Adopt a folder of audio you already have — a mounted NFS or SMB share, a USB
+     * drive, an SD card, anything the system file picker can reach.
+     */
+    fun importFolder(tree: Uri) = viewModelScope.launch {
+        if (importing != null) return@launch
+        importing = ImportProgress(0, 0, "Scanning…")
+        val r = runCatching {
+            importFolder(getApplication(), store, tree) { p -> importing = p }
+        }
+        importing = null
+        status = r.fold(
+            {
+                when {
+                    it.found == 0 -> "No audio files in that folder"
+                    it.copied == 0 -> "Found ${it.found} files but matched none — are the feeds added yet?"
+                    else -> "Adopted ${it.copied} of ${it.found} files" +
+                        if (it.failed > 0) " (${it.failed} failed)" else ""
+                }
+            },
+            { "Import failed: ${it.message}" },
+        )
+        reload()
+    }
+
+    // ---- statistics ----
+
+    fun openStats() = viewModelScope.launch {
+        byShow = withContext(Dispatchers.IO) { store.timeByShow() }
+        byMonth = withContext(Dispatchers.IO) { store.timeByMonth() }
+        showStats = true
+    }
+
     // ---- downloads ----
 
     fun download(e: Episode) = viewModelScope.launch {
@@ -248,6 +312,14 @@ class Vm(app: Application) : AndroidViewModel(app) {
         c.playWhenReady = true
         c.prepare()
         showPlayer = true
+        loadExtras(e)
+    }
+
+    /** Chapters and a transcript, if the feed published them. Neither is common. */
+    private fun loadExtras(e: Episode) = viewModelScope.launch {
+        chapters = emptyList(); cues = emptyList(); showTranscript = false
+        e.chaptersUrl?.let { chapters = runCatching { fetchChapters(it) }.getOrDefault(emptyList()) }
+        e.transcriptUrl?.let { cues = runCatching { fetchTranscript(it) }.getOrDefault(emptyList()) }
     }
 
     fun toggle() {

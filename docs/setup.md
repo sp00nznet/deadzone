@@ -25,7 +25,7 @@ CI builds on every push and attaches a signed APK to a release when you push a `
 tag:
 
 ```bash
-git tag v0.1.0 && git push --tags
+git tag v0.2.0 && git push --tags
 ```
 
 Signing uses two repository secrets. Without them the workflow still produces an APK,
@@ -72,11 +72,42 @@ Deadzone stores feed URLs in its own database, in app-private storage. Release b
 are not debuggable, so `adb` cannot read them off the device; debug builds are, which
 is why CI ships the release variant.
 
-## Sideloading
+## Adopting audio you already have
 
-If you already have a podcast collection on a drive, there is no reason to download it
-a second time. `tools/sideload.py` matches your files to entries in the real feed and
-pushes them to the phone.
+There is no reason to download a collection you already have. Two routes, same result.
+
+### Import a folder (from the phone)
+
+**Library → Import folder** opens the system directory picker. Pick the folder, and
+Deadzone matches the audio in it to episodes in your feeds and copies the matches in.
+
+Add the feeds first — matching is against episodes the app knows about, so an import
+into an empty library finds nothing.
+
+Whatever the picker can reach works:
+
+| Source | How |
+|---|---|
+| An NFS or SMB share | Mount it with any client app that exposes a `DocumentsProvider` (CIFS Documents Provider and most NFS clients do), then pick the folder |
+| A USB-OTG drive | Plug it in and pick it |
+| An SD card | Pick it |
+| Downloads, or anything local | Pick it |
+
+**Deadzone speaks none of those protocols itself**, deliberately. Android's storage
+access framework already exposes every mount as a pickable folder, so supporting the
+framework supports all of them for no protocol code and no root.
+
+Files are copied onto the phone rather than played from the share — a file left on a
+share is a file you cannot hear in a tunnel. Mount, import, unmount.
+
+An interrupted import is safe: audio is written to `NAME.part` and only renamed once
+it is whole, so nothing half-copied is ever marked as on the device. Re-run the import
+and it picks up what is missing.
+
+### Push from a desktop (over adb)
+
+When the collection is on a machine the phone cannot mount, `tools/sideload.py` does
+the same matching on the desktop and pushes over adb.
 
 ```bash
 # See what would match, touch nothing
@@ -100,13 +131,19 @@ directory, which adb can write as the user.
 ### How the matching works
 
 Local files are named by whatever ripped them, not by the publisher:
-`0007 - 7 Manfred (Part 1).mp3` has to find `Ep 7: Manfred (Part 1)`. The script
-strips the leading index, drops filler words like "episode" and "part", flattens
-punctuation and accents, and then uses `difflib` to pick the closest remaining feed
-entry. Each feed entry can only be claimed once, so two similar filenames cannot both
-take the same episode and leave a real one unmatched.
+`0007 - 7 Manfred (Part 1).mp3` has to find `Ep 7: Manfred (Part 1)`. Both routes
+strip the leading index, drop filler words like "episode", flatten punctuation and
+accents, and score what is left.
 
-Against a 617-file / 636-entry show it matched 616. If yours does worse, lower the bar:
+Three rules exist because the failure they prevent is silent — the wrong audio
+attached to the right title, which looks fine until you press play:
+
+- **The number after "Part" is kept.** Part 1 and Part 2 are different episodes.
+- **Matching on a number alone never counts.** Every show has an "Episode 12".
+- **The best match wins the episode**, not the first file to ask for it.
+
+Against a 617-file / 636-entry show it matched 616. If yours does worse, lower the bar
+on the desktop script:
 
 ```bash
 python tools/sideload.py ... --threshold 0.5 --dry-run
@@ -114,12 +151,20 @@ python tools/sideload.py ... --threshold 0.5 --dry-run
 
 Always `--dry-run` first. It prints every `file → episode` pairing it intends to make.
 
-### What it writes
+### What the desktop script writes
 
-A `sideload.tsv` of `feedUrl <TAB> guid <TAB> devicePath`, pushed alongside the audio.
+A `sideload.tsv` of feed URL, guid and device path, pushed alongside the audio.
 **Adopt sideloaded files** reads it and sets the `file` column on the matching
 episodes. Entries whose file did not actually arrive are skipped rather than marking
 an episode downloaded that then fails to play.
 
 Remote filenames are a sha1 of the episode guid, so re-running the script overwrites
 the same files instead of pushing a second copy of everything.
+
+## Finding shows
+
+**Search → Find new shows** queries the iTunes directory. No account and no API key:
+Podcast Index returns much the same feeds but wants a signed key per request, which is
+not worth making anyone register for.
+
+If a show is not in the directory, paste its RSS URL instead.

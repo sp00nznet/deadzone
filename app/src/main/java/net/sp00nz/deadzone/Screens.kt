@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -29,6 +30,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -92,6 +94,8 @@ fun App(vm: Vm) = MaterialTheme(colorScheme = Scheme) {
 
     if (vm.showPlayer) vm.nowPlaying?.let { PlayerSheet(vm, it) }
     if (vm.showSettings) SettingsSheet(vm)
+    if (vm.showStats) StatsSheet(vm)
+    vm.importing?.let { ImportDialog(it) }
 }
 
 @Composable
@@ -127,6 +131,11 @@ private fun LibraryScreen(vm: Vm) {
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/xml")
     ) { uri -> uri?.let(vm::exportOpml) }
+    // Any folder the system picker can reach: a mounted NFS or SMB share, USB-OTG,
+    // an SD card. Deadzone never has to know which.
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> uri?.let(vm::importFolder) }
 
     Column {
         TopBar(
@@ -172,6 +181,7 @@ private fun LibraryScreen(vm: Vm) {
                     ) {
                         OutlinedButton({ importer.launch(arrayOf("*/*")) }) { Text("Import OPML") }
                         OutlinedButton({ exporter.launch("deadzone.opml") }) { Text("Export") }
+                        OutlinedButton({ folderPicker.launch(null) }) { Text("Import folder") }
                     }
                 }
             }
@@ -248,21 +258,60 @@ private fun LatestScreen(vm: Vm) = Column {
 
 @Composable
 private fun SearchScreen(vm: Vm) = Column {
+    // Two different questions that both look like "search": what do I already have,
+    // and what else is out there. Keeping them on one screen but not one list.
+    Row(Modifier.padding(12.dp, 8.dp, 12.dp, 0.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = !vm.findingShows,
+            onClick = { vm.findingShows = false; vm.search(vm.query) },
+            label = { Text("My episodes") },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = Amber, selectedLabelColor = Ink, labelColor = Muted,
+            ),
+        )
+        FilterChip(
+            selected = vm.findingShows,
+            onClick = { vm.findingShows = true; vm.discover(vm.query) },
+            label = { Text("Find new shows") },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = Amber, selectedLabelColor = Ink, labelColor = Muted,
+            ),
+        )
+    }
+
     OutlinedTextField(
         value = vm.query,
-        onValueChange = vm::search,
-        placeholder = { Text("Search every episode", color = Muted) },
+        onValueChange = { if (vm.findingShows) vm.query = it else vm.search(it) },
+        placeholder = {
+            Text(if (vm.findingShows) "Search the podcast directory" else "Search every episode", color = Muted)
+        },
         leadingIcon = { Icon(Icons.Default.Search, null, tint = Muted) },
         trailingIcon = {
-            if (vm.query.isNotEmpty()) IconButton({ vm.search("") }) {
-                Icon(Icons.Default.Close, "Clear", tint = Muted)
-            }
+            if (vm.searchingDirectory) CircularProgressIndicator(Modifier.size(18.dp), Amber, strokeWidth = 2.dp)
+            else if (vm.query.isNotEmpty()) IconButton({
+                if (vm.findingShows) { vm.query = ""; vm.discovered = emptyList() } else vm.search("")
+            }) { Icon(Icons.Default.Close, "Clear", tint = Muted) }
         },
         singleLine = true,
-        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+        keyboardOptions = KeyboardOptions(
+            autoCorrectEnabled = false,
+            imeAction = if (vm.findingShows) ImeAction.Search else ImeAction.Done,
+        ),
+        // The directory is a network call, so it waits for the search key rather than
+        // firing on every keystroke. Local FTS does not need to wait for anything.
+        keyboardActions = KeyboardActions(onSearch = { vm.discover(vm.query) }),
         modifier = Modifier.fillMaxWidth().padding(12.dp),
     )
-    if (vm.query.isBlank()) {
+
+    if (vm.findingShows) {
+        if (vm.discovered.isEmpty()) {
+            Empty("Find a show.", "Searches the iTunes directory. No account, no API key.") {}
+        } else {
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(vm.discovered, key = { it.feedUrl }) { FoundRow(vm, it) }
+            }
+        }
+    } else if (vm.query.isBlank()) {
         Empty("Titles and show notes.", "Full-text, on the phone, with no network.") {}
     } else if (vm.results.isEmpty()) {
         Empty("No matches.", "Nothing in ${vm.feeds.size} feeds mentions that.") {}
@@ -273,6 +322,30 @@ private fun SearchScreen(vm: Vm) = Column {
         )
         EpisodeList(vm, vm.results, showFeed = true)
     }
+}
+
+@Composable
+private fun FoundRow(vm: Vm, f: Found) {
+    val already = vm.feeds.any { it.url == f.feedUrl }
+    Row(
+        Modifier.fillMaxWidth().padding(16.dp, 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Art(f.image, 52.dp)
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(f.title, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(
+                    f.author.takeIf { it.isNotBlank() },
+                    f.episodes.takeIf { it > 0 }?.let { "$it episodes" },
+                ).joinToString(" · "),
+                color = Muted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (already) Text("Added", color = Muted, fontSize = 12.sp)
+        else TextButton({ vm.subscribe(f) }) { Text("Add", color = Amber) }
+    }
+    HorizontalDivider(color = Panel)
 }
 
 @Composable
@@ -558,10 +631,53 @@ private fun PlayerSheet(vm: Vm, e: Episode) = ModalBottomSheet(
             )
         }
 
-        if (e.description.isNotBlank()) Text(
-            stripHtml(e.description), Modifier.padding(top = 20.dp),
-            color = Muted, fontSize = 13.sp, lineHeight = 19.sp,
-        )
+        if (vm.chapters.isNotEmpty()) {
+            // The active chapter is the last one that has started.
+            val active = vm.chapters.indexOfLast { it.startMs <= vm.position }
+            Section("Chapters")
+            for ((i, ch) in vm.chapters.withIndex()) Row(
+                Modifier.fillMaxWidth().clickable { vm.seekTo(ch.startMs) }.padding(vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    hms(ch.startMs), Modifier.width(64.dp),
+                    color = if (i == active) Amber else Muted, fontSize = 12.sp,
+                )
+                Text(
+                    ch.title, Modifier.weight(1f),
+                    color = if (i == active) Amber else MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                    fontWeight = if (i == active) FontWeight.Medium else FontWeight.Normal,
+                )
+            }
+        }
+
+        if (vm.cues.isNotEmpty()) {
+            Section("Transcript")
+            TextButton({ vm.showTranscript = !vm.showTranscript }) {
+                Text(
+                    if (vm.showTranscript) "Hide" else "Show ${vm.cues.size} lines",
+                    color = Amber,
+                )
+            }
+            if (vm.showTranscript) {
+                val active = vm.cues.indexOfLast { it.startMs <= vm.position }
+                for ((i, cue) in vm.cues.withIndex()) Text(
+                    cue.text,
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { vm.seekTo(cue.startMs) }
+                        .padding(vertical = 4.dp),
+                    color = if (i == active) Amber else Muted,
+                    fontSize = 14.sp, lineHeight = 20.sp,
+                )
+            }
+        }
+
+        if (e.description.isNotBlank()) {
+            Section("Show notes")
+            Text(stripHtml(e.description), color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+        }
     }
 }
 
@@ -621,12 +737,17 @@ private fun SettingsSheet(vm: Vm) = ModalBottomSheet(
             Text("Adopt sideloaded files")
         }
 
-        val onDevice = vm.feeds.sumOf { it.downloaded }
+        Text("Listening", Modifier.padding(top = 24.dp))
+        Text("Hours per show and per month, from your play history", color = Muted, fontSize = 12.sp)
+        OutlinedButton({ vm.showSettings = false; vm.openStats() }, Modifier.padding(top = 8.dp)) {
+            Text("Statistics")
+        }
+
         Text(
-            "$onDevice episode${if (onDevice == 1) "" else "s"} on device",
+            plural(vm.feeds.sumOf { it.downloaded }, "episode") + " on device",
             Modifier.padding(top = 24.dp), color = Muted, fontSize = 13.sp,
         )
-        Text("Deadzone 0.1.0", Modifier.padding(top = 16.dp), color = Muted, fontSize = 11.sp)
+        Text("Deadzone 0.2.0", Modifier.padding(top = 16.dp), color = Muted, fontSize = 11.sp)
     }
 }
 
@@ -649,6 +770,102 @@ private fun AddFeedDialog(onDismiss: () -> Unit, onAdd: (String) -> Unit) {
         },
         dismissButton = { TextButton(onDismiss) { Text("Cancel", color = Muted) } },
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StatsSheet(vm: Vm) = ModalBottomSheet(
+    onDismissRequest = { vm.showStats = false },
+    containerColor = Panel,
+    sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+) {
+    val totalSecs = vm.byShow.sumOf { it.seconds }
+    Column(
+        Modifier
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
+            .padding(24.dp, 0.dp, 24.dp, 40.dp)
+    ) {
+        Text("Listening", fontSize = 18.sp, fontWeight = FontWeight.Medium)
+        Text(
+            "${plural(vm.byShow.sumOf { it.finished }, "episode")} · ${hours(totalSecs)} in total",
+            color = Muted, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp),
+        )
+
+        if (vm.byShow.isEmpty()) {
+            Text(
+                "Nothing finished yet. Reach the end of an episode and it shows up here.",
+                Modifier.padding(top = 24.dp), color = Muted, fontSize = 13.sp,
+            )
+            return@Column
+        }
+
+        Section("By show")
+        // Bars relative to the biggest, which is the only comparison that matters here.
+        val top = vm.byShow.first().seconds.coerceAtLeast(1)
+        for (r in vm.byShow) {
+            Column(Modifier.padding(vertical = 6.dp)) {
+                Row {
+                    Text(r.title, Modifier.weight(1f), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(hours(r.seconds), color = Muted, fontSize = 13.sp)
+                }
+                LinearProgressIndicator(
+                    progress = { r.seconds.toFloat() / top },
+                    modifier = Modifier.fillMaxWidth().padding(top = 5.dp).height(4.dp),
+                    color = Amber, trackColor = Ink,
+                )
+                Text(plural(r.finished, "episode"), color = Muted, fontSize = 11.sp)
+            }
+        }
+
+        Section("By month")
+        for (m in vm.byMonth) Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+            Text(m.month, Modifier.width(80.dp), color = Muted, fontSize = 13.sp)
+            Text(plural(m.finished, "episode"), Modifier.weight(1f), fontSize = 13.sp)
+            Text(hours(m.seconds), color = Amber, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun ImportDialog(p: ImportProgress) = AlertDialog(
+    // No dismiss: cancelling half way would leave the copy loop running with nothing
+    // showing it. The .part files make an interrupted import safe, not invisible.
+    onDismissRequest = {},
+    containerColor = Panel,
+    title = { Text("Importing") },
+    text = {
+        Column {
+            Text(p.current, color = Muted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (p.total > 0) {
+                LinearProgressIndicator(
+                    progress = { p.done.toFloat() / p.total },
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                    color = Amber, trackColor = Ink,
+                )
+                Text("${p.done} of ${p.total}", Modifier.padding(top = 6.dp), color = Muted, fontSize = 12.sp)
+            } else {
+                LinearProgressIndicator(
+                    Modifier.fillMaxWidth().padding(top = 12.dp), color = Amber, trackColor = Ink,
+                )
+            }
+        }
+    },
+    confirmButton = {},
+)
+
+@Composable
+private fun Section(title: String) = Text(
+    title.uppercase(), Modifier.padding(top = 24.dp, bottom = 4.dp),
+    color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+)
+
+private fun plural(n: Int, noun: String) = "$n $noun" + if (n == 1) "" else "s"
+
+private fun hours(seconds: Long): String {
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    return if (h > 0) "${h}h ${m}m" else "${m}m"
 }
 
 // ---- bits ----

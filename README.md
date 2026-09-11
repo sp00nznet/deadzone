@@ -19,6 +19,12 @@ plane, or three miles up a trail with no bars. Nothing in the app waits on a net
 <td align="center"><img src="docs/screenshots/09-history.png" width="185"><br><sub>What you finished, and when</sub></td>
 <td align="center"><img src="docs/screenshots/10-settings.png" width="185"><br><sub>Wi-Fi only, auto-delete, adopt</sub></td>
 </tr>
+<tr>
+<td align="center"><img src="docs/screenshots/13-discover.png" width="185"><br><sub>Find shows, no API key</sub></td>
+<td align="center"><img src="docs/screenshots/14-stats.png" width="185"><br><sub>Hours by show and month</sub></td>
+<td align="center"><img src="docs/screenshots/15-folder-import.png" width="185"><br><sub>A mounted share, adopted</sub></td>
+<td align="center"><img src="docs/screenshots/03-search.png" width="185"><br><sub>Show notes are searched too</sub></td>
+</tr>
 </table>
 
 ---
@@ -31,12 +37,17 @@ enter, because there was never an online one; aeroplane mode changes nothing abo
 what any screen does. Sync becomes a background job that mutates a table, and it is
 free to fail, repeatedly, without a single screen noticing.
 
-**2. A file you already own and a file the app downloaded are the same row.** If you
-have a podcast collection on a drive somewhere, `tools/sideload.py` matches those
-files to entries in the real feed, pushes them over adb, and links them by GUID. From
-then on the app cannot tell the difference, and does not need to: same column, same
-playback path, same auto-delete rules. A back catalogue you already have never gets
-downloaded twice.
+**2. A file you already own and a file the app downloaded are the same row.** Point
+Deadzone at a folder — a mounted NFS or SMB share, a USB drive, an SD card — and it
+matches the audio in it to entries in your feeds by title and adopts it. From then on
+the app cannot tell the difference, and does not need to: same column, same playback
+path, same auto-delete rules. A back catalogue you already have never gets downloaded
+twice.
+
+Notably, **Deadzone speaks no network filesystem at all.** Android's file picker
+already reaches anything mounted, so "mount the share however you like, then point the
+app at the folder" works for NFS, SMB, USB-OTG and an SD card alike, for no protocol
+code. Mount it, import it, unmount it — the audio is on the phone now.
 
 ## What it does
 
@@ -49,6 +60,11 @@ downloaded twice.
 | **Fetches by itself** | Keep the newest *N* per feed, on unmetered networks only, resuming part-downloads rather than restarting them. |
 | **Cleans up after itself** | Finished downloads older than 7 / 30 / 90 days are deleted; the feed entry and your history stay. |
 | **Imports and exports OPML** | Bring a subscription list in whole, and take it out again. Folders become categories. |
+| **Adopts a folder you already have** | Any folder the file picker can reach, matched to your feeds by title and copied in. |
+| **Finds new shows** | Searches the iTunes directory. No account, no API key, nothing to register for. |
+| **Counts what you listened to** | Hours per show and per month, from play history that was already being recorded. |
+| **Works in the car** | An Android Auto browse tree: Continue, Downloaded, Queue, and every show. |
+| **Shows chapters and transcripts** | When a feed publishes them — tap a chapter or a transcript line to seek there. |
 
 Plus the things a podcast app is not allowed to get wrong: background playback with
 the screen off, lock-screen and bluetooth controls, pausing when the headphones come
@@ -68,29 +84,32 @@ Paste an RSS URL, or hit **Import OPML** and bring your whole list at once. Set
 **auto-download** per feed from the ⋮ menu and it fills itself in over Wi-Fi from then
 on.
 
-Already have the audio? See [docs/setup.md → Sideloading](docs/setup.md#sideloading).
+Already have the audio? **Import folder** in the library adopts anything the file
+picker can reach — see [docs/setup.md → Adopting audio you already have](docs/setup.md#adopting-audio-you-already-have).
 
 ## Docs
 
 - **[design.md](docs/design.md)** — how it works, and what was traded away
-- **[setup.md](docs/setup.md)** — building, signing, feeds, and sideloading a collection
+- **[setup.md](docs/setup.md)** — building, signing, feeds, and adopting a collection
 - **[roadmap.md](docs/roadmap.md)** — what is next
-- **[testing.md](docs/testing.md)** — the checks, and the four bugs only a real device found
+- **[testing.md](docs/testing.md)** — the checks, and the bugs only a real device found
 
 ## Layout
 
 | File | |
 |---|---|
-| `Feed.kt` | RSS, Atom and OPML parsing. Pure, and unit-tested |
-| `Store.kt` | SQLite — feeds, episodes, positions, history, full-text search |
-| `Sync.kt` | Fetching, resumable downloads, the background job, settings |
-| `PlayerService.kt` | The media session. Background audio and hardware controls |
+| `Feed.kt` | RSS, Atom, OPML and transcript parsing. Pure, and unit-tested |
+| `Match.kt` | Working out which episode a file on disk is. Pure, and unit-tested |
+| `Store.kt` | SQLite — feeds, episodes, positions, history, full-text search, statistics |
+| `Sync.kt` | Fetching, resumable downloads, directory search, the background job |
+| `Import.kt` | Walking a picked folder and adopting what is in it |
+| `PlayerService.kt` | The media session, and the Android Auto browse tree |
 | `MainActivity.kt` | `Vm` — all state, the screen stack, every action |
 | `Screens.kt` | The UI |
-| `tools/sideload.py` | Matches a local collection to feeds and pushes it. Stdlib only |
+| `tools/sideload.py` | The same adoption from a desktop, over adb. Stdlib only |
 
-Six Kotlin files. No dependency injection, no navigation library, no repository layer,
-no ORM.
+Eight Kotlin files. No dependency injection, no navigation library, no repository
+layer, no ORM.
 
 ## A note on feed URLs
 

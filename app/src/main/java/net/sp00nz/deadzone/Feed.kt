@@ -27,6 +27,9 @@ data class ParsedItem(
     val duration: Int,     // seconds, 0 if unknown
     val size: Long,        // bytes, 0 if unknown
     val image: String?,
+    val chaptersUrl: String? = null,     // podcast:chapters, a JSON document
+    val transcriptUrl: String? = null,   // podcast:transcript
+    val transcriptType: String? = null,  // text/vtt, application/srt, ...
 )
 
 data class ParsedFeed(
@@ -101,6 +104,8 @@ fun parseFeed(xml: String): ParsedFeed {
     // Per-item scratch, reset on every <item>.
     var guid = ""; var title = ""; var desc = ""; var audio = ""
     var published = 0L; var duration = 0; var size = 0L; var image: String? = null
+    var chapters: String? = null
+    var transcript: String? = null; var transcriptType: String? = null
 
     parse(xml, object : DefaultHandler() {
         override fun startElement(u: String?, l: String?, q: String, a: Attributes) {
@@ -110,6 +115,18 @@ fun parseFeed(xml: String): ParsedFeed {
                     inItem = true
                     guid = ""; title = ""; desc = ""; audio = ""
                     published = 0L; duration = 0; size = 0L; image = null
+                    chapters = null; transcript = null; transcriptType = null
+                }
+                // The podcast: namespace. Both are just URLs on the element.
+                "chapters" -> if (inItem) a.attr("url")?.let { chapters = it }
+                "transcript" -> if (inItem) {
+                    val url = a.attr("url")
+                    val type = a.attr("type").orEmpty()
+                    // A show often publishes the same transcript three ways. VTT
+                    // carries timings and parses in a dozen lines; HTML does not.
+                    val better = transcript == null ||
+                        (transcriptType?.contains("vtt") != true && type.contains("vtt"))
+                    if (url != null && better) { transcript = url; transcriptType = type }
                 }
                 "enclosure" -> {
                     // RSS. Some feeds carry several; the first is the episode.
@@ -165,6 +182,8 @@ fun parseFeed(xml: String): ParsedFeed {
                             description = desc, audioUrl = audio,
                             published = published, duration = duration,
                             size = size, image = image,
+                            chaptersUrl = chapters,
+                            transcriptUrl = transcript, transcriptType = transcriptType,
                         )
                     }
                 }
@@ -233,6 +252,64 @@ fun parseDate(s: String): Long {
         }
     }
     return 0L
+}
+
+data class Cue(val startMs: Long, val text: String)
+
+/**
+ * WebVTT and SRT, which differ by a decimal comma, an optional index line, and a
+ * header. Parsing both with one function is less code than deciding which it is.
+ *
+ *     00:01:23.456 --> 00:01:25.000
+ *     the words
+ */
+fun parseCues(body: String): List<Cue> {
+    val out = mutableListOf<Cue>()
+    var start = -1L
+    val text = StringBuilder()
+
+    fun flush() {
+        if (start >= 0 && text.isNotBlank()) out += Cue(start, text.toString().trim())
+        start = -1L; text.setLength(0)
+    }
+
+    for (raw in body.lineSequence()) {
+        val line = raw.trim()
+        val arrow = line.indexOf("-->")
+        when {
+            arrow > 0 -> {
+                // A new timing line ends the previous cue, whether or not a blank
+                // line separated them — plenty of transcripts omit it.
+                flush()
+                start = cueTime(line.substring(0, arrow).trim())
+            }
+            line.isEmpty() -> flush()
+            // The bare number above an SRT cue, and VTT's header, are not content.
+            start < 0 -> Unit
+            else -> {
+                if (text.isNotEmpty()) text.append(' ')
+                text.append(stripHtml(line))
+            }
+        }
+    }
+    flush()
+    return out
+}
+
+/** "00:01:23.456", "01:23.456" or "00:01:23,456" -> millis. */
+private fun cueTime(s: String): Long {
+    val t = s.substringBefore(' ').replace(',', '.')
+    val parts = t.split(':')
+    if (parts.isEmpty() || parts.size > 3) return -1L
+    return try {
+        // Fold in base 60 as seconds, then convert once. Scaling each part to millis
+        // as you go multiplies the already-scaled accumulator by 60,000 a second time.
+        var secs = 0.0
+        for (p in parts) secs = secs * 60 + p.toDouble()
+        (secs * 1000).toLong()
+    } catch (_: NumberFormatException) {
+        -1L
+    }
 }
 
 /** Descriptions are HTML. Lists and search results want words. */

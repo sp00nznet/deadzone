@@ -4,13 +4,15 @@ How Deadzone works, and what was traded away to keep it small.
 
 ## The shape
 
-Six Kotlin files, one Gradle module, one database.
+Eight Kotlin files, one Gradle module, one database.
 
 ```
-Feed.kt           RSS, Atom and OPML parsing. Pure — no Android imports.
-Store.kt          SQLite: feeds, episodes, positions, history, full-text search.
-Sync.kt           OkHttp fetch, resumable downloads, the WorkManager job, settings.
-PlayerService.kt  Media3 session service. Playback, lock screen, bluetooth.
+Feed.kt           RSS, Atom, OPML and VTT/SRT parsing. Pure — no Android imports.
+Match.kt          Which episode is this file? Pure — no Android imports.
+Store.kt          SQLite: feeds, episodes, positions, history, search, statistics.
+Sync.kt           OkHttp fetch, resumable downloads, directory search, the job.
+Import.kt         Walking a picked folder and adopting the audio in it.
+PlayerService.kt  Media3 library session. Playback, hardware controls, Android Auto.
 MainActivity.kt   Vm — all state, every action.
 Screens.kt        The UI.
 ```
@@ -97,21 +99,60 @@ A podcast feed is XML from a stranger. Two defences:
    all of which are in feeds that have been running since 2005. Silently returning 0
    for those would drop a show's entire back catalogue into 1970.
 
-## Sideloading
+## Adopting audio you already have
 
-The interesting case is a collection you already have. `tools/sideload.py` reads the
-feed, fuzzy-matches local filenames to episode titles with `difflib` (local files are
-named by whatever ripped them — `0007 - 7 Manfred (Part 1).mp3` has to find
-`Ep 7: Manfred (Part 1)`), pushes each file to the app's external directory over adb,
-and writes a `feedUrl \t guid \t path` manifest.
+The interesting case is a collection that already exists somewhere. There are two
+routes in, and they end at the same place: the `file` column on an episode row.
 
-**Adopt sideloaded files** in Settings reads that manifest and sets `file` on the
-matching rows. After that there is no difference at all between an episode you
-sideloaded and one the app downloaded — same column, same playback path, same
-auto-delete rules. The app has no idea which is which, and does not need to.
+### From the phone: a folder
 
-Files land in `/sdcard/Android/data/net.sp00nz.deadzone/files/`, which adb can write
-as the user. No root, and no debug build required.
+**Import folder** opens the system directory picker. Whatever that picker can reach,
+Deadzone can import: an NFS or SMB share mounted by a client app, a USB-OTG drive, an
+SD card, the Downloads folder.
+
+**Deadzone implements no network filesystem, and should not.** Every mount is already
+a `DocumentsProvider`, so supporting the framework supports all of them at once, for
+no protocol code and no root. Mount the share, import, unmount — the audio is local
+from then on, which is the whole point.
+
+The walk uses `DocumentsContract` and one cursor per directory rather than
+`DocumentFile`, which issues a separate content-provider query per file for its name
+and type. Over 23,000 files on a network mount that is thousands of round trips
+against tens.
+
+Files are **copied in**, not linked. A file left on the share is a file you cannot
+hear in a tunnel, and hearing it in a tunnel is the entire app.
+
+### From a desktop: adb
+
+`tools/sideload.py` does the same matching on a computer and pushes over adb, writing
+a manifest of feed URL, guid and path that **Adopt sideloaded files** in Settings
+reads. Useful when the collection is on a machine the phone cannot mount.
+
+### The matching
+
+Local audio is named by whatever ripped it, not by the publisher:
+`0007 - 7 Manfred (Part 1).mp3` has to find `Ep 7: Manfred (Part 1)`. `Match.kt`
+strips the leading index (rippers often write it twice), drops filler words, flattens
+case and accents, and scores token overlap.
+
+Three rules earn their place, because the failure they prevent is silent — the wrong
+audio attached to the right title, which looks fine until you press play:
+
+1. **Numbers are kept.** "Part 1" and "Part 2" are different episodes, and a matcher
+   that treats the digit as filler makes them the same string.
+2. **A number alone is never a match.** Every show has an "Episode 12". Since files
+   are matched against the whole library rather than one feed, agreeing on a digit is
+   not evidence; a shared *word* is required first.
+3. **Episodes are allocated best-score-first, not file-order.** Otherwise a mediocre
+   early match takes the episode a later file matches exactly, and one wrong pairing
+   cascades into ten.
+
+Against a real 617-file show it matches 616.
+
+After adoption there is no difference between an episode you imported and one the app
+downloaded: same column, same playback path, same auto-delete rules. The app has no
+idea which is which, and does not need to.
 
 ## Playback
 
@@ -126,6 +167,37 @@ asymmetric seek increments (back 15s, forward 30s) rather than the music default
 An episode is marked played at 95% rather than at the end, because outros, ad reads
 and trailing silence mean almost nobody reaches the last sample.
 
+### Android Auto
+
+Being a `MediaLibraryService` rather than a plain `MediaSessionService` is what gives
+the car something to browse. The tree comes from the same database every screen reads:
+**Continue** (started but unfinished), **Downloaded**, **Queue**, and **Shows** → each
+feed → its unplayed episodes.
+
+Two things there are deliberate. Browsing runs on a background executor, because a car
+asks for a whole list at once and serving that on the caller's main thread is an ANR
+waiting for a large library. And `onAddMediaItems` re-resolves every item by id before
+playback, because a controller may strip the URI off a browse item — that hook is also
+where the resume position is applied, which is why picking up mid-episode works in the
+car at all.
+
+### Chapters and transcripts
+
+`podcast:chapters` is a JSON document of start times; `podcast:transcript` is VTT or
+SRT. Both are fetched when an episode starts, and both are optional — a feed that
+publishes neither simply shows neither. Tapping a chapter or a transcript line seeks
+there, and the active one is highlighted from the position that was already ticking.
+
+When a show publishes the same transcript three ways, VTT wins: it is the one with
+timings, and timings are the only reason to show a transcript in a player rather than
+in a browser.
+
+### Statistics
+
+Hours per show and per month. This is a query, not a feature — `played_at` has been a
+real timestamp on every finished episode since the first version, so nothing had to be
+recorded to enable it.
+
 ## What was traded away
 
 | Not built | Why | When to add it |
@@ -133,8 +205,9 @@ and trailing silence mean almost nobody reaches the last sample.
 | Room | Compile-checked DAOs cost KSP codegen and three artifacts; the FTS index would be hand-written SQL either way | If the schema grows past two tables |
 | Paging 3 | `LIMIT/OFFSET` with an index covers 23k rows, and the fast scroller makes position, not page size, the problem | If a single feed exceeds ~50k episodes |
 | Skip silence | `skipSilenceEnabled` is an ExoPlayer API, not a `Player` one; exposing it through the session needs a custom command | Alongside any other custom session command |
-| Podcast Index search | Adding a feed is pasting a URL or importing OPML; discovery is a different app | If adding feeds by hand becomes the friction |
-| Chapters, transcripts | Podcast-namespace tags, a second parser and a second UI | When a feed you actually listen to publishes them |
-| A sync server | There is no second device in the picture yet | If playback position needs to follow you between devices |
+| Podcast Index | The same feeds as iTunes, but it wants a signed API key per request, and a search box is not worth making someone register for | If iTunes' catalogue proves too narrow |
+| An NFS or SMB client | The system picker already reaches every mount, so one protocol would buy less than the framework does | Ideally never |
+| A sync server | Positions following you between devices. Nothing here assumes a second device, and adding one means running something | If a second device appears |
+| A foreground service for imports | A large import holds the app open; the `.part` rule already makes interrupting it safe | If importing tens of thousands of files becomes routine |
 
 Every shortcut taken deliberately is marked with a `ponytail:` comment in the source.

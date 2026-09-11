@@ -139,6 +139,72 @@ suspend fun downloadEpisode(
     target
 }
 
+/** One result from a podcast directory search. */
+data class Found(
+    val title: String,
+    val author: String,
+    val feedUrl: String,
+    val image: String?,
+    val episodes: Int,
+)
+
+/**
+ * Search the iTunes directory.
+ *
+ * ponytail: iTunes, not Podcast Index. Both are free and return the same feeds;
+ * Podcast Index wants a signed API key per request, and a discovery box is not worth
+ * making somebody register for. No key, no account, no secret to keep out of the repo.
+ */
+suspend fun searchPodcasts(term: String): List<Found> = withContext(Dispatchers.IO) {
+    if (term.isBlank()) return@withContext emptyList()
+    val url = "https://itunes.apple.com/search?media=podcast&limit=25&term=" +
+        java.net.URLEncoder.encode(term.trim(), "UTF-8")
+    val body = get(url) ?: return@withContext emptyList()
+    val results = org.json.JSONObject(body).optJSONArray("results")
+        ?: return@withContext emptyList()
+    (0 until results.length()).mapNotNull { i ->
+        val o = results.optJSONObject(i) ?: return@mapNotNull null
+        val feed = o.optString("feedUrl").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        Found(
+            title = o.optString("collectionName").ifBlank { feed },
+            author = o.optString("artistName"),
+            feedUrl = feed,
+            image = o.optString("artworkUrl600").takeIf { it.isNotBlank() }
+                ?: o.optString("artworkUrl100").takeIf { it.isNotBlank() },
+            episodes = o.optInt("trackCount"),
+        )
+    }
+}
+
+data class Chapter(val startMs: Long, val title: String, val image: String?)
+
+/** The podcast-namespace chapters document: a JSON array of start times and titles. */
+suspend fun fetchChapters(url: String): List<Chapter> = withContext(Dispatchers.IO) {
+    val body = get(url) ?: return@withContext emptyList()
+    val arr = org.json.JSONObject(body).optJSONArray("chapters")
+        ?: return@withContext emptyList()
+    (0 until arr.length()).mapNotNull { i ->
+        val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        val title = o.optString("title").ifBlank { return@mapNotNull null }
+        Chapter(
+            // startTime is seconds, and fractional in plenty of feeds.
+            startMs = (o.optDouble("startTime", 0.0) * 1000).toLong(),
+            title = title,
+            image = o.optString("img").takeIf { it.isNotBlank() },
+        )
+    }
+}
+
+suspend fun fetchTranscript(url: String): List<Cue> = withContext(Dispatchers.IO) {
+    parseCues(get(url).orEmpty())
+}
+
+/** A plain GET that returns null rather than throwing — all three callers are optional extras. */
+private fun get(url: String): String? = runCatching {
+    http.newCall(Request.Builder().url(url).header("User-Agent", UA).build())
+        .execute().use { if (it.isSuccessful) it.body?.string() else null }
+}.getOrNull()
+
 private const val UA = "Deadzone/0.1 (+https://github.com/sp00nznet/deadzone)"
 
 // ---- background ----

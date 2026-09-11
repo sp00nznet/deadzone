@@ -43,7 +43,10 @@ for stream in (sys.stdout, sys.stderr):
 # 1).mp3" has to match "Ep 7: Manfred (Part 1)". Stripping the leading index and the
 # punctuation is what makes the two comparable at all.
 LEADING_INDEX = re.compile(r"^\s*\d{1,5}\s*[-._]\s*(?:\d{1,5}\s*[-._:]?\s*)?")
-NOISE = re.compile(r"\b(ep(isode)?|pt|part|no)\b\.?\s*\d*", re.I)
+# The filler word goes; the number after it does NOT. "Manfred (Part 1)"
+# and "(Part 2)" are different episodes, and swallowing the digit makes
+# them one string, silently pairing the wrong audio with the wrong entry.
+NOISE = re.compile(r"\b(ep(isode)?|pt|part|no)\b\.?", re.I)
 
 
 def normalise(s: str) -> str:

@@ -17,6 +17,11 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Deadzone">
 
+        <!-- Android Auto discovers media apps through this. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,7 +45,10 @@
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
+                <!-- Both, so a plain session controller and a car browser each bind. -->
+                <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
     </application>
