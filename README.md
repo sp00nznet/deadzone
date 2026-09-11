@@ -44,11 +44,12 @@ what any screen does. Sync becomes a background job that mutates a table, and it
 free to fail, repeatedly, without a single screen noticing.
 
 **2. A file you already own and a file the app downloaded are the same row.** Point
-Deadzone at a folder — a mounted NFS or SMB share, a USB drive, an SD card — and it
-matches the audio in it to entries in your feeds by title and adopts it. From then on
-the app cannot tell the difference, and does not need to: same column, same playback
-path, same auto-delete rules. A back catalogue you already have never gets downloaded
-twice.
+Deadzone at a folder — Music, Downloads, an SD card, a mounted NFS or SMB share — and
+it matches the audio in it against your feeds. What it recognises is attached to that
+episode; what it doesn't is kept anyway, as a local show named after its folder or its
+album tag. From then on the app cannot tell the difference, and does not need to: same
+column, same playback path. A back catalogue you already have never gets downloaded
+twice, and nothing you point it at is silently discarded.
 
 Notably, **Deadzone speaks no network filesystem at all.** Android's file picker
 already reaches anything mounted, so "mount the share however you like, then point the
@@ -66,7 +67,7 @@ code. Mount it, import it, unmount it — the audio is on the phone now.
 | **Fetches by itself** | Keep the newest *N* per feed, on unmetered networks only, resuming part-downloads rather than restarting them. |
 | **Cleans up after itself** | Finished downloads older than 7 / 30 / 90 days are deleted; the feed entry and your history stay. |
 | **Imports and exports OPML** | Bring a subscription list in whole, and take it out again. Folders become categories. |
-| **Adopts a folder you already have** | Any folder the file picker can reach, matched to your feeds by title and copied in. |
+| **Adopts a folder you already have** | Any folder the file picker can reach. What matches a feed you follow is attached to it; the rest becomes a local show, so nothing is dropped. |
 | **Finds new shows** | Searches the iTunes directory. No account, no API key, nothing to register for. |
 | **Counts what you listened to** | Hours per show and per month, from play history that was already being recorded. |
 | **Works in the car** | An Android Auto browse tree: Continue, Downloaded, Queue, and every show. |

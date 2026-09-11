@@ -155,8 +155,31 @@ audio attached to the right title, which looks fine until you press play:
 Against a real 617-file show it matches 616.
 
 After adoption there is no difference between an episode you imported and one the app
-downloaded: same column, same playback path, same auto-delete rules. The app has no
-idea which is which, and does not need to.
+downloaded: same column, same playback path. The app has no idea which is which, and
+mostly does not need to.
+
+### Audio that matches nothing
+
+Early on, anything the matcher could not place was dropped. That made pointing the app
+at a plain `Music` folder report "matched none" and change nothing, which is indistinguishable
+from the feature being broken — and it was the first thing a real user hit.
+
+Unmatched audio is now kept as a **local show**: a `feed` row whose url is
+`local:<name>`, named from the file's album tag or its folder, with titles and lengths
+read from the files themselves. Local shows are skipped by the refresh loop, because
+there is no feed behind them to fetch.
+
+### Two things the app must not get wrong
+
+**It must not duplicate a music library.** Audio already on the device's own storage is
+linked by its `content://` URI rather than copied; only audio reached through some
+other provider is copied, because that is the case where the source can go away.
+
+**It must not delete files it does not own.** `Store.owns()` gates every delete on the
+path being one the app wrote under its own directory. Auto-delete, unsubscribing and
+"delete download" therefore unlink a local file rather than removing it. Getting this
+wrong once would destroy someone's library, which is why the check is in the store
+rather than at each call site.
 
 ## Playback
 

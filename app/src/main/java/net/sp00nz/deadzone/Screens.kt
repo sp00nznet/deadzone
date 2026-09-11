@@ -58,6 +58,14 @@ private val Scheme = darkColorScheme(
 fun App(vm: Vm) = MaterialTheme(colorScheme = Scheme) {
     val snackbar = remember { SnackbarHostState() }
 
+    // Registered here rather than inside the settings sheet. A launcher is
+    // unregistered when its composable leaves composition, so a button that closes
+    // the sheet and launches in the same click threw the result away — the picker
+    // opened, you chose a folder, and nothing whatsoever happened.
+    val pickFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri -> uri?.let(vm::importFolder) }
+
     LaunchedEffect(vm.status) {
         vm.status?.let { snackbar.showSnackbar(it); vm.status = null }
     }
@@ -84,7 +92,7 @@ fun App(vm: Vm) = MaterialTheme(colorScheme = Scheme) {
         Box(Modifier.padding(pad).fillMaxSize()) {
             when {
                 vm.openFeed != null -> FeedScreen(vm, vm.openFeed!!)
-                vm.tab == Tab.LIBRARY -> LibraryScreen(vm)
+                vm.tab == Tab.LIBRARY -> LibraryScreen(vm, onPickFolder = { pickFolder.launch(null) })
                 vm.tab == Tab.LATEST -> LatestScreen(vm)
                 vm.tab == Tab.SEARCH -> SearchScreen(vm)
                 else -> HistoryScreen(vm)
@@ -93,7 +101,7 @@ fun App(vm: Vm) = MaterialTheme(colorScheme = Scheme) {
     }
 
     if (vm.showPlayer) vm.nowPlaying?.let { PlayerSheet(vm, it) }
-    if (vm.showSettings) SettingsSheet(vm)
+    if (vm.showSettings) SettingsSheet(vm) { pickFolder.launch(null) }
     if (vm.showStats) StatsSheet(vm)
     vm.importing?.let { ImportDialog(it) }
 }
@@ -123,7 +131,7 @@ private fun NavBar(vm: Vm) = NavigationBar(containerColor = Panel) {
 // ---- library ----
 
 @Composable
-private fun LibraryScreen(vm: Vm) {
+private fun LibraryScreen(vm: Vm, onPickFolder: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
     val importer = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -131,11 +139,7 @@ private fun LibraryScreen(vm: Vm) {
     val exporter = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("text/xml")
     ) { uri -> uri?.let(vm::exportOpml) }
-    // Any folder the system picker can reach: a mounted NFS or SMB share, USB-OTG,
-    // an SD card. Deadzone never has to know which.
-    val folderPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocumentTree()
-    ) { uri -> uri?.let(vm::importFolder) }
+
 
     Column {
         TopBar(
@@ -181,7 +185,7 @@ private fun LibraryScreen(vm: Vm) {
                     ) {
                         OutlinedButton({ importer.launch(arrayOf("*/*")) }) { Text("Import OPML") }
                         OutlinedButton({ exporter.launch("deadzone.opml") }) { Text("Export") }
-                        OutlinedButton({ folderPicker.launch(null) }) { Text("Import folder") }
+                        OutlinedButton(onPickFolder) { Text("Import folder") }
                     }
                 }
             }
@@ -201,7 +205,7 @@ private fun FeedRow(vm: Vm, feed: Feed) = Row(
         Text(feed.title, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(
             buildString {
-                append("${feed.total} episodes")
+                append(plural(feed.total, "episode"))
                 if (feed.downloaded > 0) append(" · ${feed.downloaded} on device")
                 if (feed.keep > 0) append(" · auto ${feed.keep}")
             },
@@ -685,7 +689,7 @@ private fun PlayerSheet(vm: Vm, e: Episode) = ModalBottomSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsSheet(vm: Vm) = ModalBottomSheet(
+private fun SettingsSheet(vm: Vm, onPickFolder: () -> Unit) = ModalBottomSheet(
     onDismissRequest = { vm.showSettings = false },
     containerColor = Panel,
     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -728,13 +732,19 @@ private fun SettingsSheet(vm: Vm) = ModalBottomSheet(
             )
         }
 
-        Text("Sideloaded audio", Modifier.padding(top = 24.dp))
+        Text("Audio you already have", Modifier.padding(top = 24.dp))
         Text(
-            "Adopt files pushed by tools/sideload.py instead of downloading them again",
+            "Pick a folder — Music, Downloads, an SD card, or a mounted network " +
+                "share. Anything matching a feed you follow is attached to it; the " +
+                "rest is kept as its own local show.",
             color = Muted, fontSize = 12.sp,
         )
-        OutlinedButton(vm::adoptSideloaded, Modifier.padding(top = 8.dp)) {
-            Text("Adopt sideloaded files")
+        OutlinedButton(
+            { vm.showSettings = false; onPickFolder() },
+            Modifier.padding(top = 8.dp),
+        ) { Text("Import a folder…") }
+        TextButton(vm::adoptSideloaded, Modifier.padding(top = 4.dp)) {
+            Text("Adopt files pushed by tools/sideload.py", color = Muted, fontSize = 12.sp)
         }
 
         Text("Listening", Modifier.padding(top = 24.dp))

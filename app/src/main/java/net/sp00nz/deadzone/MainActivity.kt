@@ -243,6 +243,9 @@ class Vm(app: Application) : AndroidViewModel(app) {
      */
     fun importFolder(tree: Uri) = viewModelScope.launch {
         if (importing != null) return@launch
+        // The settings sheet sits above the snackbar host, so anything reported while
+        // it is open is painted underneath it and looks like nothing happened.
+        showSettings = false
         importing = ImportProgress(0, 0, "Scanning…")
         val r = runCatching {
             importFolder(getApplication(), store, tree) { p -> importing = p }
@@ -250,11 +253,16 @@ class Vm(app: Application) : AndroidViewModel(app) {
         importing = null
         status = r.fold(
             {
+                val kept = it.matched + it.adopted
                 when {
                     it.found == 0 -> "No audio files in that folder"
-                    it.copied == 0 -> "Found ${it.found} files but matched none — are the feeds added yet?"
-                    else -> "Adopted ${it.copied} of ${it.found} files" +
-                        if (it.failed > 0) " (${it.failed} failed)" else ""
+                    kept == 0 -> "Found ${it.found} files but could not read any of them"
+                    else -> buildString {
+                        append("Added $kept of ${it.found}")
+                        if (it.matched > 0) append(" · ${it.matched} matched a feed")
+                        if (it.adopted > 0) append(" · ${it.adopted} as local shows")
+                        if (it.failed > 0) append(" · ${it.failed} failed")
+                    }
                 }
             },
             { "Import failed: ${it.message}" },
@@ -285,6 +293,8 @@ class Vm(app: Application) : AndroidViewModel(app) {
     }
 
     fun adoptSideloaded() = viewModelScope.launch {
+        // Same reason as importFolder: the result has to be visible.
+        showSettings = false
         val n = withContext(Dispatchers.IO) { store.adoptSideloaded() }
         status = if (n == 0) "No sideload.tsv found — run tools/sideload.py first"
                  else "Adopted $n episodes already on the phone"

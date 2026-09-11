@@ -75,7 +75,8 @@ suspend fun refresh(store: Store, feed: Feed): Int = withContext(Dispatchers.IO)
 suspend fun refreshAll(store: Store): SyncResult {
     var added = 0
     val failed = mutableListOf<String>()
-    for (f in store.feeds()) {
+    // A local show has no feed behind it; there is nothing to fetch.
+    for (f in store.feeds().filter { !it.url.startsWith(LOCAL) }) {
         try {
             added += refresh(store, f)
         } catch (e: Exception) {

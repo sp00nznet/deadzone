@@ -56,7 +56,17 @@ data class Episode(
      * A bare filesystem path has no scheme and ExoPlayer will not guess one, so the
      * local case has to become a real file:// URI here.
      */
-    val source: String get() = file?.let { Uri.fromFile(File(it)).toString() } ?: audioUrl
+    val source: String get() = when {
+        file == null -> audioUrl
+        // A file we adopted in place is already a content:// URI and ExoPlayer takes
+        // it as-is; one we downloaded is a bare path and needs a file:// scheme,
+        // because ExoPlayer will not guess one.
+        file.startsWith("content://") -> file
+        else -> Uri.fromFile(File(file)).toString()
+    }
+
+    /** True for audio kept as a local show rather than fetched from a feed. */
+    val isLocal get() = audioUrl.startsWith("local:")
 }
 
 enum class Filter { ALL, UNPLAYED, DOWNLOADED, IN_PROGRESS }
@@ -175,10 +185,11 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
     }
 
     fun removeFeed(id: Long) {
-        // Take the audio with it, or the files are orphaned on disk forever.
+        // Take our own downloads with it, or they are orphaned on disk forever —
+        // but never touch audio adopted in place, which is the user's own file.
         readableDatabase.rawQuery(
             "SELECT file FROM episode WHERE feed_id = ? AND file IS NOT NULL", arrayOf("$id")
-        ).use { c -> while (c.moveToNext()) File(c.getString(0)).delete() }
+        ).use { c -> while (c.moveToNext()) c.getString(0).let { if (owns(it)) File(it).delete() } }
         writableDatabase.delete("feed", "id = ?", arrayOf("$id"))
     }
 
@@ -325,8 +336,21 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
     fun setFile(id: Long, path: String?) = update("episode", id, "file" to path)
 
     fun deleteFile(id: Long) {
-        episode(id)?.file?.let { File(it).delete() }
+        episode(id)?.file?.let { if (owns(it)) File(it).delete() }
         setFile(id, null)
+    }
+
+    /**
+     * Whether the app put this file where it is, and may therefore remove it.
+     *
+     * Audio adopted in place belongs to the user — it is their Music folder, not our
+     * cache. Deleting it because an episode was tidied up would destroy files the app
+     * never owned, so every delete path checks this first.
+     */
+    private fun owns(path: String): Boolean {
+        if (path.startsWith("content://")) return false
+        val root = (ctx.getExternalFilesDir(null) ?: ctx.filesDir).absolutePath
+        return File(path).absolutePath.startsWith(root)
     }
 
     /** Reclaims space: finished episodes whose audio has been sitting around too long. */
@@ -334,10 +358,14 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
         if (olderThanDays <= 0) return 0
         val cutoff = System.currentTimeMillis() - olderThanDays * 86_400_000L
         var n = 0
+        // Only our own downloads expire. A local show is the user's library, not a
+        // cache, and quietly unlinking it after 30 days would be a data loss.
         readableDatabase.rawQuery(
-            "SELECT id FROM episode WHERE file IS NOT NULL AND played_at > 0 AND played_at < ?",
-            arrayOf("$cutoff")
-        ).use { c -> while (c.moveToNext()) { deleteFile(c.getLong(0)); n++ } }
+            "SELECT id, file FROM episode WHERE file IS NOT NULL AND played_at > 0 " +
+                "AND played_at < ?", arrayOf("$cutoff")
+        ).use { c ->
+            while (c.moveToNext()) if (owns(c.getString(1))) { deleteFile(c.getLong(0)); n++ }
+        }
         return n
     }
 
@@ -384,6 +412,40 @@ class Store(private val ctx: Context) : SQLiteOpenHelper(ctx, "deadzone.db", nul
     fun bytesOnDisk(): Long = readableDatabase
         .rawQuery("SELECT COALESCE(SUM(size), 0) FROM episode WHERE file IS NOT NULL", null)
         .use { if (it.moveToFirst()) it.getLong(0) else 0L }
+
+    // ---- local shows ----
+
+    /** A show that is not a feed: audio adopted from a folder. Never refreshed. */
+    fun localFeed(name: String): Long =
+        addFeed("$LOCAL$name", name, "On this phone")
+
+    fun addLocalEpisode(
+        feedId: Long,
+        file: String,
+        title: String,
+        published: Long,
+        duration: Int,
+        size: Long,
+    ) {
+        // guid is the stored location, so re-importing the same folder updates the
+        // row instead of stacking a second copy of every episode.
+        writableDatabase.execSQL(
+            """INSERT INTO episode
+                 (feed_id, guid, title, description, audio_url, published, duration, size, file)
+               VALUES (?,?,?,'',?,?,?,?,?)
+               ON CONFLICT(feed_id, guid) DO UPDATE SET
+                 title = excluded.title, duration = excluded.duration,
+                 size = excluded.size, file = excluded.file""",
+            arrayOf<Any?>(
+                feedId, file, title, "$LOCAL$file", published, duration, size, file,
+            )
+        )
+    }
+
+    /** Where copied local audio goes, when it had to be copied at all. */
+    fun localDir(show: String): File =
+        File(File(ctx.getExternalFilesDir(null) ?: ctx.filesDir, "local"), safe(show))
+            .also { it.mkdirs() }
 
     // ---- folder import ----
 
@@ -462,6 +524,8 @@ fun ftsQuery(raw: String): String? {
 // COALESCE, not e.image: most feeds set artwork once on the channel and never per
 // episode, so reading e.image alone leaves every row and the player with a
 // placeholder. Doing it here fixes every screen at once, the car included.
+const val LOCAL = "local:"
+
 private const val SELECT =
     "SELECT e.*, COALESCE(e.image, f.image) image, f.title feed_title " +
         "FROM episode e JOIN feed f ON f.id = e.feed_id"

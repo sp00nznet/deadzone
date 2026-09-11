@@ -78,11 +78,21 @@ There is no reason to download a collection you already have. Two routes, same r
 
 ### Import a folder (from the phone)
 
-**Library → Import folder** opens the system directory picker. Pick the folder, and
-Deadzone matches the audio in it to episodes in your feeds and copies the matches in.
+**Settings → Import a folder…** (or **Library → Import folder**) opens the system
+directory picker. Pick a folder and Deadzone walks it, including subfolders.
 
-Add the feeds first — matching is against episodes the app knows about, so an import
-into an empty library finds nothing.
+Two things happen to what it finds:
+
+- Audio whose filename matches an episode of a feed you subscribe to is **attached to
+  that episode** — it counts as downloaded, keeps its resume position, and shows up
+  under that show.
+- Everything else is **kept as a local show**, named after its album tag if it has one
+  and its folder if it doesn't, with the title and length read from the file. This is
+  the normal case for a plain `Music` folder, and it means you can adopt audio for
+  shows you have never subscribed to.
+
+Subscribing first makes matching better, but it is not required and nothing is
+discarded either way. No network is needed at all.
 
 Whatever the picker can reach works:
 
@@ -97,8 +107,15 @@ Whatever the picker can reach works:
 access framework already exposes every mount as a pickable folder, so supporting the
 framework supports all of them for no protocol code and no root.
 
-Files are copied onto the phone rather than played from the share — a file left on a
-share is a file you cannot hear in a tunnel. Mount, import, unmount.
+**Audio already on the phone is linked, not copied.** Importing `/Music` does not
+duplicate it; the library points at the files where they are. Audio reached through
+any other provider — a network share, a cloud mount — **is** copied onto the phone,
+because a file left on a share is a file you cannot hear in a tunnel. Mount, import,
+unmount.
+
+Deadzone will never delete audio it did not put there. Auto-delete, unsubscribing and
+"delete download" all skip linked files; they only remove copies the app made
+itself.
 
 An interrupted import is safe: audio is written to `NAME.part` and only renamed once
 it is whole, so nothing half-copied is ever marked as on the device. Re-run the import
