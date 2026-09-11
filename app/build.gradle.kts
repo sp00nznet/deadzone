@@ -12,8 +12,8 @@ android {
         applicationId = "net.sp00nz.deadzone"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "0.2.0"
+        versionCode = 3
+        versionName = "0.2.1"
     }
 
     buildTypes {
@@ -21,7 +21,12 @@ android {
         release { isMinifyEnabled = false }
     }
 
-    buildFeatures { compose = true }
+    // buildConfig so the about line reads the real versionName instead of a second
+    // hardcoded copy that drifts the moment one of them is bumped and the other isn't.
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

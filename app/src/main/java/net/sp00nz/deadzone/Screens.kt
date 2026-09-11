@@ -757,7 +757,10 @@ private fun SettingsSheet(vm: Vm, onPickFolder: () -> Unit) = ModalBottomSheet(
             plural(vm.feeds.sumOf { it.downloaded }, "episode") + " on device",
             Modifier.padding(top = 24.dp), color = Muted, fontSize = 13.sp,
         )
-        Text("Deadzone 0.2.0", Modifier.padding(top = 16.dp), color = Muted, fontSize = 11.sp)
+        Text(
+            "Deadzone ${BuildConfig.VERSION_NAME}",
+            Modifier.padding(top = 16.dp), color = Muted, fontSize = 11.sp,
+        )
     }
 }
 
