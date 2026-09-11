@@ -1,0 +1,17 @@
+local.properties
+.gradle/
+build/
+*.apk
+*.aab
+*.keystore
+*.jks
+.idea/
+.kotlin/
+.DS_Store
+
+# Feed URLs are personal, and the Patreon ones carry an auth token that is
+# equivalent to a password. Nothing in here is ever committed.
+seed/
+*.opml
+feeds.local.*
+sideload.tsv

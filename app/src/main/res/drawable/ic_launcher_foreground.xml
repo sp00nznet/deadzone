@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Broadcast arcs, with the outermost one cut: signal that stops. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#F2B441"
+        android:pathData="M54,58m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0" />
+    <path android:strokeColor="#F2B441" android:strokeWidth="4"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M43,47 A15,15 0 0,1 65,47" />
+    <path android:strokeColor="#F2B441" android:strokeWidth="4"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M35,39 A26,26 0 0,1 73,39" />
+    <path android:strokeColor="#4A5058" android:strokeWidth="4"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M27,31 A37,37 0 0,1 43,23" />
+    <path android:strokeColor="#4A5058" android:strokeWidth="4"
+        android:strokeLineCap="round" android:fillColor="#00000000"
+        android:pathData="M65,23 A37,37 0 0,1 81,31" />
+</vector>
