@@ -5,6 +5,7 @@ build/
 *.aab
 *.keystore
 *.jks
+deadzone-keystore-password.txt
 .idea/
 .kotlin/
 .DS_Store
